@@ -27,7 +27,7 @@ static constexpr float FADE_DURATION = 0.5f;
 
 static const int   ORB_IDS[11]      = { 36,   84,   141,   1022,  1330,  1333,  1704,  1751,  3004,  3027,  1594  };
 // full content sizes from device log — used directly as box2d radius or half-extent
-static const float ORB_FULL_SIZE[11] = { 30.f, 30.f, 30.5f, 29.5f, 32.5f, 31.5f, 39.f,  39.f,  39.f,  36.5f, 28.5f };
+static const float ORB_FULL_SIZE[11] = { 32.f, 32.f, 3z.5f, 31.5f, 34.5f, 33.5f, 41.f,  41.f,  41.f,  38.5f, 30.5f };
 // SimplePlayer content size on device
 static constexpr float PLAYER_FULL_SIZE = 68.f;
 
