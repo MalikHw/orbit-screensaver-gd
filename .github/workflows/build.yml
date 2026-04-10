@@ -15,8 +15,9 @@ jobs:
         - name: Windows
           os: windows-latest
 
-        - name: iOS
-          os: macos-latest
+        # - name: iOS
+        #   os: macos-latest
+        # I REMOVED THEM CUZ ITS KINDA BROKEN WHEN PUBLISHING ARTI-FUCKED
 
         - name: macOS
           os: macos-latest
