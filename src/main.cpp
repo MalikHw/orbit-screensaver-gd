@@ -23,12 +23,12 @@ static float s_idleTimer   = 0.f;
 static bool  s_ssActive    = false;
 
 static constexpr float PPM           = 40.f;
-static constexpr float FADE_DURATION = 0.5f; 
+static constexpr float FADE_DURATION = 0.5f;
 
-static const int ORB_IDS[11] = {
-    36, 84, 141, 1022, 1330, 1333, 1704, 1751, 3004, 3027,
-    1594
-};
+// ORB_IDS[i] and ORB_RADII[i] are paired — radius is the physics half-extent in pixels
+// index 10 (id 1594) is the block, uses box shape
+static const int   ORB_IDS[11]    = { 36,  84, 141, 1022, 1330, 1333, 1704, 1751, 3004, 3027, 1594 };
+static const float ORB_RADII[11]  = { 25, 25,  25,   25,   25,   25,   25,   25,   25,   25,   25  };
 
 enum class BgMode { Color, Blur };
 
@@ -59,8 +59,6 @@ private:
         int     orbIdx   = 0;
         bool    isPlayer = false;
         CCNode* node     = nullptr;
-        float   drawW    = 0.f;
-        float   drawH    = 0.f;
     };
 
     b2World*          m_world      = nullptr;
@@ -91,9 +89,8 @@ private:
     CCSize m_screen;
 
     bool init() override {
-
-        auto* mod   = Mod::get();
-        m_bgColor   = mod->getSettingValue<ccColor4B>("bg-color");
+        auto* mod = Mod::get();
+        m_bgColor = mod->getSettingValue<ccColor4B>("bg-color");
 
         bool wantBlur = mod->getSettingValue<bool>("bg-blur");
         m_bgMode = (wantBlur && BlurAPI::isBlurAPIEnabled()) ? BgMode::Blur : BgMode::Color;
@@ -186,15 +183,11 @@ private:
         if (!m_fadeDone) {
             m_fadeTimer += dt;
             float t = m_fadeTimer / FADE_DURATION;
-            if (t >= 1.f) {
-                t = 1.f;
-                m_fadeDone = true;
-            }
+            if (t >= 1.f) { t = 1.f; m_fadeDone = true; }
 
             GLubyte targetAlpha = (m_bgMode == BgMode::Blur) ? 180 : m_bgColor.a;
             this->setOpacity((GLubyte)(targetAlpha * t));
-            return; 
-
+            return;
         }
 
         float W = m_screen.width;
@@ -250,20 +243,9 @@ private:
     }
 
     void spawnOrb(float W, float) {
-        int  orbIdx = std::rand() % 11;
-        bool isBox  = (orbIdx == 10);
-
-        auto* obj = GameObject::createWithKey(ORB_IDS[orbIdx]);
-        if (!obj) return;
-
-        this->addChild(obj, 2);
-        obj->setScale(1.f);
-        obj->setPosition({-9999.f, -9999.f});
-
-        CCSize cs2   = obj->getContentSize();
-        float  drawW = cs2.width;
-        float  drawH = cs2.height;
-        float  half  = std::max(drawW, drawH) * 0.5f;
+        int   orbIdx = std::rand() % 11;
+        bool  isBox  = (orbIdx == 10);
+        float radius = ORB_RADII[orbIdx];
 
         b2BodyDef bd;
         bd.type = b2_dynamicBody;
@@ -281,10 +263,10 @@ private:
         fd.density = 1.f; fd.restitution = 0.5f; fd.friction = 1.f;
 
         if (isBox) {
-            ps.SetAsBox(half / PPM, half / PPM);
+            ps.SetAsBox(radius / PPM, radius / PPM);
             fd.shape = &ps;
         } else {
-            cs.m_radius = half / PPM;
+            cs.m_radius = radius / PPM;
             fd.shape    = &cs;
         }
         body->CreateFixture(&fd);
@@ -293,7 +275,14 @@ private:
             body->GetWorldCenter(), true
         );
 
-        m_balls.push_back({body, half, orbIdx, false, obj, drawW, drawH});
+        auto* obj = GameObject::createWithKey(ORB_IDS[orbIdx]);
+        if (obj) {
+            this->addChild(obj, 2);
+            obj->setScale(1.f);
+            obj->setPosition({-9999.f, -9999.f});
+        }
+
+        m_balls.push_back({body, radius, orbIdx, false, obj});
     }
 
     void spawnPlayerCube(float W, float) {
@@ -314,9 +303,7 @@ private:
         sp->setPosition({-9999.f, -9999.f});
 
         CCSize cs2   = sp->getContentSize();
-        float  drawW = cs2.width;
-        float  drawH = cs2.height;
-        float  half  = std::max(drawW, drawH) * 0.5f;
+        float  half  = std::max(cs2.width, cs2.height) * 0.5f;
 
         b2BodyDef bd;
         bd.type = b2_dynamicBody;
@@ -333,7 +320,7 @@ private:
         fd.shape = &ps; fd.density = 1.f; fd.restitution = 0.5f; fd.friction = 0.7f;
         body->CreateFixture(&fd);
 
-        m_balls.push_back({body, half, 0, true, sp, drawW, drawH});
+        m_balls.push_back({body, half, 0, true, sp});
     }
 
     ~ScreensaverLayer() override {
