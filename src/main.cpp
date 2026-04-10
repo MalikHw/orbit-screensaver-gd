@@ -1,405 +1,410 @@
 #include <Geode/Geode.hpp>
-#include <Geode/modify/CCDirector.hpp>
+#include <Geode/modify/CCScene.hpp>
+#include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/CCTouchDispatcher.hpp>
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
-#include <Geode/modify/CCMouseDispatcher.hpp>
-#include <Geode/binding/GameManager.hpp>
-#include <Geode/binding/SimplePlayer.hpp>
+
 #include <box2d/box2d.h>
 
+#include <vector>
+#include <cmath>
+#include <cstdlib>
+#include <ctime>
+
 using namespace geode::prelude;
+using namespace cocos2d;
 
-static constexpr float PPM = 50.0f;
 
-struct OrbEntry {
-    b2Body*  body;
-    CCNode*  node;
-    float    radius;
-    bool     isBox;
+static void resetIdle();
+static void dismissActive();
+
+
+static bool  s_inPlayLayer = false;
+static float s_idleTimer   = 0.f;
+static bool  s_ssActive    = false;
+
+
+static constexpr float PPM         = 40.f;
+static constexpr int   PLAYER_SIZE = 80;
+
+static const int ORB_IDS[11] = {
+    36, 84, 141, 1022, 1330, 1333, 1704, 1751, 3004, 3027,
+    1594
 };
 
-static float s_idleSeconds = 0.f;
 
-class OrbitScreensaverLayer : public CCLayerColor {
+class ScreensaverLayer : public CCLayerColor {
 public:
-    b2World*               m_world      = nullptr;
-    std::vector<OrbEntry>  m_orbs;
-    b2Body*                m_groundBody = nullptr;
-    bool                   m_draining   = false;
-    float                  m_drainTimer = 0.f;
-    static bool            s_active;
-
-    static OrbitScreensaverLayer* create() {
-        auto ret = new OrbitScreensaverLayer();
-        if (ret && ret->init()) {
-            ret->autorelease();
-            return ret;
-        }
+    static ScreensaverLayer* create() {
+        auto* ret = new ScreensaverLayer();
+        if (ret && ret->init()) { ret->autorelease(); return ret; }
         CC_SAFE_DELETE(ret);
         return nullptr;
     }
 
-    bool init() {
-        auto winSize = CCDirector::get()->getWinSize();
-        auto bgCol   = Mod::get()->getSettingValue<ccColor4B>("bg-color");
-        if (!CCLayerColor::initWithColor(bgCol, winSize.width, winSize.height))
+    void dismiss() {
+        if (m_dismissed) return;
+        m_dismissed = true;
+        this->unscheduleAllSelectors();
+        this->removeFromParentAndCleanup(true);
+        s_ssActive  = false;
+        s_idleTimer = 0.f;
+    }
+
+private:
+    struct Ball {
+        b2Body* body     = nullptr;
+        float   radius   = 0.f;
+        int     orbIdx   = 0;
+        bool    isPlayer = false;
+        CCNode* node     = nullptr;
+    };
+
+    b2World*          m_world      = nullptr;
+    b2Body*           m_wallBot    = nullptr;
+    std::vector<Ball> m_balls;
+
+    int   m_globalTime    = 0;
+    int   m_nextSpawn     = 0;
+    bool  m_playerSpawned = false;
+    bool  m_fillingDone   = false;
+    bool  m_draining      = false;
+    bool  m_dismissed     = false;
+
+    float m_physAccum  = 0.f;
+    float m_drainDelay = 5.f;
+
+    int   m_numBalls   = 120;
+    float m_speedMult  = 1.f;
+    float m_orbScale   = 1.f;
+    int   m_cubeChance = 50;
+    bool  m_noGround   = false;
+    int   m_dropTime   = 2;
+
+    CCSize m_screen;
+
+    bool init() override {
+        if (!CCLayerColor::initWithColor({0, 0, 0, 255}))
             return false;
 
+        m_screen = CCDirector::get()->getWinSize();
+        this->setContentSize(m_screen);
+        this->setPosition(CCPointZero);
+
         this->setTouchEnabled(true);
-        this->setTouchMode(kCCTouchesAllAtOnce);
+        this->setTouchMode(kCCTouchesOneByOne);
+        this->setTouchPriority(-9999);
+
         this->setKeypadEnabled(true);
+        this->setKeyboardEnabled(true);
 
-        auto hint = CCLabelBMFont::create("Tap or press any key to dismiss", "chatFont.fnt");
-        hint->setScale(0.55f);
-        hint->setOpacity(140);
-        hint->setPosition(ccp(winSize.width / 2.f, 14.f));
-        this->addChild(hint, 10);
+#ifdef GEODE_IS_DESKTOP
+        this->setMouseEnabled(true);
+#endif
 
-        float speedMul = (float)Mod::get()->getSettingValue<double>("speed");
-        b2Vec2 gravity(0.0f, -9.8f * speedMul * 3.0f);
-        m_world = new b2World(gravity);
-
-        this->buildWalls();
-        this->spawnOrbs();
         this->scheduleUpdate();
+        std::srand((unsigned)std::time(nullptr));
+        startCycle();
         return true;
     }
 
-    ~OrbitScreensaverLayer() {
+    bool ccTouchBegan(CCTouch*, CCEvent*) override {
+        dismiss();
+        return true;
+    }
+
+    void keyDown(enumKeyCodes /*key*/, double /*timestamp*/) override {
+        dismiss();
+    }
+
+    void keyBackClicked() override { dismiss(); }
+
+
+#ifdef GEODE_IS_DESKTOP
+    void ccMouseMoved(CCEvent*) override  { dismiss(); }
+    void ccMouseDragged(CCEvent*) override { dismiss(); }
+    void scrollWheel(float, float) override { dismiss(); }
+#endif
+
+    void startCycle() {
+        auto* mod      = Mod::get();
+        m_numBalls     = (int)mod->getSettingValue<int64_t>("orb-count");
+        m_orbScale     = (float)mod->getSettingValue<double>("orb-scale");
+        m_cubeChance   = (int)mod->getSettingValue<int64_t>("cube-chance");
+        m_noGround     = mod->getSettingValue<bool>("no-ground");
+        float rawSpeed = (float)mod->getSettingValue<int64_t>("orb-speed");
+        m_speedMult    = rawSpeed / 10.f;
+        m_dropTime     = std::max(1, (int)(20.f / m_speedMult));
+
+        if (m_numBalls < 1)    m_numBalls = 1;
+        if (m_orbScale < 0.1f) m_orbScale = 0.1f;
+
+        m_globalTime    = 0;
+        m_nextSpawn     = 0;
+        m_playerSpawned = false;
+        m_fillingDone   = false;
+        m_draining      = false;
+        m_physAccum     = 0.f;
+        m_drainDelay    = 5.f + (std::rand() % 1001) / 1000.f;
+
+        for (auto& b : m_balls)
+            if (b.node) b.node->removeFromParentAndCleanup(true);
+        m_balls.clear();
+
         delete m_world;
-    }
+        m_world  = nullptr;
+        m_wallBot = nullptr;
 
-    void buildWalls() {
-        auto winSize = CCDirector::get()->getWinSize();
-        float W = winSize.width  / PPM;
-        float H = winSize.height / PPM;
+        b2Vec2 grav(0.f, 9.8f * m_speedMult * 3.f);
+        m_world = new b2World(grav);
 
-        auto makeEdge = [&](b2Vec2 a, b2Vec2 b) {
-            b2BodyDef bd;
-            auto* body = m_world->CreateBody(&bd);
-            b2EdgeShape edge;
-            edge.SetTwoSided(a, b);
-            b2FixtureDef fd;
-            fd.shape       = &edge;
-            fd.restitution = 0.45f;
-            fd.friction    = 0.6f;
+        float W = m_screen.width;
+        float H = m_screen.height;
+
+        auto makeWall = [&](float x1, float y1, float x2, float y2) -> b2Body* {
+            b2BodyDef bd; bd.type = b2_staticBody;
+            b2Body* body = m_world->CreateBody(&bd);
+            b2EdgeShape es;
+            es.SetTwoSided(b2Vec2(x1/PPM, y1/PPM), b2Vec2(x2/PPM, y2/PPM));
+            b2FixtureDef fd; fd.shape = &es; fd.restitution = 0.5f; fd.friction = 0.7f;
             body->CreateFixture(&fd);
+            return body;
         };
 
-        makeEdge({0.f, 0.f},    {0.f, H + 4.f});
-        makeEdge({W,   0.f},    {W,   H + 4.f});
-        makeEdge({0.f, H + 2.f},{W,   H + 2.f});
-
-        b2BodyDef bd;
-        auto* gb = m_world->CreateBody(&bd);
-        b2EdgeShape edge;
-        edge.SetTwoSided({0.f, 0.f}, {W, 0.f});
-        b2FixtureDef fd;
-        fd.shape       = &edge;
-        fd.restitution = 0.45f;
-        fd.friction    = 0.6f;
-        gb->CreateFixture(&fd);
-        m_groundBody = gb;
-    }
-
-    void spawnOrbs() {
-        auto winSize    = CCDirector::get()->getWinSize();
-        auto gm         = GameManager::get();
-        int  orbCount   = (int)Mod::get()->getSettingValue<int64_t>("orb-count");
-        float orbScale  = (float)Mod::get()->getSettingValue<double>("orb-scale");
-        int  cubeChance = (int)Mod::get()->getSettingValue<int64_t>("cube-chance");
-        float W = winSize.width;
-        float H = winSize.height;
-
-        static const char* kFrames[] = {
-            "ring_01_001.png",
-            "ring_02_001.png",
-            "ring_03_001.png",
-            "ring_04_001.png",
-            "ring_05_001.png",
-            "ring_06_001.png",
-            "ring_07_001.png",
-            "ring_08_001.png",
-            "ring_09_001.png",
-        };
-
-        for (int i = 0; i < orbCount; i++) {
-            float radius = (20.f + (float)(rand() % 12)) * orbScale;
-
-            auto spr = CCSprite::createWithSpriteFrameName(kFrames[rand() % 9]);
-            if (spr) {
-                float half = fmaxf(spr->getContentSize().width,
-                                   spr->getContentSize().height) * 0.5f;
-                if (half > 0.f) spr->setScale(radius / half);
-            }
-
-            float px = 40.f + (float)(rand() % (int)(W - 80.f));
-            float py = H + (float)(rand() % 600 + 50);
-
-            b2BodyDef bd;
-            bd.type = b2_dynamicBody;
-            bd.position.Set(px / PPM, py / PPM);
-            bd.angle = (float)(rand() % 360) * b2_pi / 180.f;
-            auto* body = m_world->CreateBody(&bd);
-
-            b2CircleShape circle;
-            circle.m_radius = radius / PPM;
-            b2FixtureDef fd;
-            fd.shape       = &circle;
-            fd.density     = 1.0f;
-            fd.restitution = 0.5f;
-            fd.friction    = 0.8f;
-            body->CreateFixture(&fd);
-
-            body->ApplyLinearImpulse(
-                b2Vec2((float)(rand() % 21 - 10) * 0.04f, 0.f),
-                body->GetWorldCenter(), true
-            );
-
-            if (spr) {
-                spr->setPosition(ccp(px, H - py));
-                this->addChild(spr, 5);
-            }
-
-            m_orbs.push_back({body, spr, radius, false});
-        }
-
-        if ((rand() % 100) < cubeChance) {
-            int cubeID = gm->activeIconForType(IconType::Cube);
-            auto player = SimplePlayer::create(cubeID);
-            if (player) {
-                player->setColors(
-                    GameManager::get()->colorForIdx(gm->getPlayerColor()),
-                    GameManager::get()->colorForIdx(gm->getPlayerColor2())
-                );
-                float half = 28.f * orbScale;
-                float naturalHalf = fmaxf(player->getContentSize().width,
-                                          player->getContentSize().height) * 0.5f;
-                if (naturalHalf > 0.f) player->setScale(half / naturalHalf);
-
-                float px2 = 60.f + (float)(rand() % (int)(W - 120.f));
-                float py2 = H + (float)(rand() % 300 + 300);
-
-                b2BodyDef bd;
-                bd.type = b2_dynamicBody;
-                bd.position.Set(px2 / PPM, py2 / PPM);
-                bd.angle = (float)(rand() % 360) * b2_pi / 180.f;
-                auto* body = m_world->CreateBody(&bd);
-
-                b2PolygonShape box;
-                box.SetAsBox(half / PPM, half / PPM);
-                b2FixtureDef fd;
-                fd.shape       = &box;
-                fd.density     = 1.0f;
-                fd.restitution = 0.45f;
-                fd.friction    = 0.7f;
-                body->CreateFixture(&fd);
-
-                player->setPosition(ccp(px2, H - py2));
-                this->addChild(player, 6);
-                m_orbs.push_back({body, player, half, true});
-            }
-        }
+        makeWall(0,   0, 0,   H);
+        makeWall(W,   0, W,   H);
+        if (!m_noGround)
+            m_wallBot = makeWall(0, H, W, H);
     }
 
     void update(float dt) override {
-        if (dt > 0.05f) dt = 0.05f;
+        if (m_dismissed) return;
 
-        auto winSize  = CCDirector::get()->getWinSize();
-        bool noGround = Mod::get()->getSettingValue<bool>("no-ground");
-        float H = winSize.height;
+        float W = m_screen.width;
+        float H = m_screen.height;
+        m_globalTime++;
 
-        if (noGround && m_groundBody) {
-            m_world->DestroyBody(m_groundBody);
-            m_groundBody = nullptr;
+        while (m_nextSpawn < m_numBalls &&
+               m_globalTime >= m_dropTime * m_nextSpawn)
+        {
+            spawnOrb(W, H);
+            m_nextSpawn++;
         }
 
-        if (!noGround && !m_draining && m_groundBody) {
-            m_drainTimer += dt;
-            if (m_drainTimer > 6.0f) {
-                m_draining = true;
-                m_world->DestroyBody(m_groundBody);
-                m_groundBody = nullptr;
-            }
+        if (!m_playerSpawned && m_nextSpawn >= m_numBalls / 2) {
+            m_playerSpawned = true;
+            if ((std::rand() % 100) < m_cubeChance)
+                spawnPlayerCube(W, H);
         }
 
-        m_world->Step(dt, 8, 3);
-
-        for (auto& o : m_orbs) {
-            b2Vec2 pos = o.body->GetPosition();
-            float  ang = o.body->GetAngle() * (180.f / b2_pi);
-            float  screenY = H - pos.y * PPM;
-
-            if (o.node) {
-                o.node->setPosition(ccp(pos.x * PPM, screenY));
-                o.node->setRotation(-ang);
-            }
-        }
-
-        if (m_draining) {
-            bool allGone = true;
-            for (auto& o : m_orbs) {
-                if (o.body->GetPosition().y * PPM > -300.f) {
-                    allGone = false;
-                    break;
+        if (!m_noGround && !m_fillingDone && m_nextSpawn >= m_numBalls) {
+            int drainFrame = m_numBalls * m_dropTime + (int)(m_drainDelay * 60.f);
+            if (m_globalTime >= drainFrame) {
+                m_fillingDone = true;
+                m_draining    = true;
+                if (m_wallBot) {
+                    m_world->DestroyBody(m_wallBot);
+                    m_wallBot = nullptr;
                 }
             }
-            if (allGone) {
-                m_draining   = false;
-                m_drainTimer = 0.f;
-                this->resetSim();
-            }
         }
 
-        if (noGround) {
-            for (auto& o : m_orbs) {
-                if (o.body->GetPosition().y * PPM < -100.f) {
-                    float newX = (40.f + (float)(rand() % (int)(winSize.width - 80.f))) / PPM;
-                    float newY = (H + (float)(rand() % 200 + 50)) / PPM;
-                    o.body->SetTransform(b2Vec2(newX, newY), o.body->GetAngle());
-                    o.body->SetLinearVelocity(b2Vec2(
-                        (float)(rand() % 200 - 100) * 0.01f,
-                        (float)(rand() % 100 + 20) * 0.01f
-                    ));
-                }
-            }
+        if (!m_noGround && m_draining) {
+            bool allOff = true;
+            for (auto& b : m_balls)
+                if (b.body->GetPosition().y * PPM < H + 300.f) { allOff = false; break; }
+            if (allOff) { startCycle(); return; }
+        }
+        if (m_noGround && m_globalTime > m_numBalls * m_dropTime + 500) {
+            startCycle();
+            return;
+        }
+
+        m_physAccum += dt;
+        if (m_physAccum > 0.f) {
+            m_world->Step(m_physAccum, 8, 3);
+            m_physAccum = 0.f;
+        }
+        for (auto& b : m_balls) {
+            if (!b.node) continue;
+            float px = b.body->GetPosition().x * PPM;
+            float py = b.body->GetPosition().y * PPM;
+            b.node->setPosition({px, H - py});
+            float angDeg = -b.body->GetAngle() * (180.f / (float)M_PI);
+            b.node->setRotation(angDeg);
         }
     }
 
-    void resetSim() {
-        for (auto& o : m_orbs) {
-            if (o.node) o.node->removeFromParent();
-            m_world->DestroyBody(o.body);
-        }
-        m_orbs.clear();
+    void spawnOrb(float W, float /*H*/) {
+        float radius = (40.f + std::rand() % 20) * m_orbScale;
+        int   orbIdx = std::rand() % 11;
+        bool  isBox  = (orbIdx == 10);
 
         b2BodyDef bd;
-        auto* gb = m_world->CreateBody(&bd);
-        auto winSize = CCDirector::get()->getWinSize();
-        float W = winSize.width / PPM;
-        b2EdgeShape edge;
-        edge.SetTwoSided({0.f, 0.f}, {W, 0.f});
+        bd.type = b2_dynamicBody;
+        bd.position.Set(
+            (W * 0.1f + (std::rand() % std::max(1, (int)(W * 0.8f)))) / PPM,
+            -250.f / PPM
+        );
+        bd.angle = (float)(std::rand() % 360) * ((float)M_PI / 180.f);
+
+        b2Body* body = m_world->CreateBody(&bd);
+
+        b2FixtureDef   fd;
+        b2CircleShape  cs;
+        b2PolygonShape ps;
+        fd.density = 1.f; fd.restitution = 0.5f; fd.friction = 1.f;
+
+        if (isBox) {
+            ps.SetAsBox(radius / PPM, radius / PPM);
+            fd.shape = &ps;
+        } else {
+            cs.m_radius = radius / PPM;
+            fd.shape    = &cs;
+        }
+        body->CreateFixture(&fd);
+
+        body->ApplyLinearImpulse(
+            b2Vec2((10 - std::rand() % 21) * 0.05f, 0.f),
+            body->GetWorldCenter(), true
+        );
+
+        auto* obj = GameObject::createWithKey(ORB_IDS[orbIdx]);
+        if (obj) {
+            obj->setRScale((radius * 2.f) / 30.f);
+            obj->setPosition({-9999.f, -9999.f});
+            this->addChild(obj, 2);
+        }
+
+        m_balls.push_back({body, radius, orbIdx, false, obj});
+    }
+
+    void spawnPlayerCube(float W, float /*H*/) {
+        auto* gm = GameManager::get();
+        float s  = (float)PLAYER_SIZE * m_orbScale;
+
+        b2BodyDef bd;
+        bd.type = b2_dynamicBody;
+        bd.position.Set(
+            ((float)(std::rand() % std::max(1, (int)W))) / PPM,
+            -(200.f + std::rand() % 800) / PPM
+        );
+        bd.angle = (float)(std::rand() % 360) * ((float)M_PI / 180.f);
+
+        b2Body* body = m_world->CreateBody(&bd);
+        b2PolygonShape ps;
+        ps.SetAsBox((s * 0.5f) / PPM, (s * 0.5f) / PPM);
         b2FixtureDef fd;
-        fd.shape = &edge; fd.restitution = 0.45f; fd.friction = 0.6f;
-        gb->CreateFixture(&fd);
-        m_groundBody = gb;
+        fd.shape = &ps; fd.density = 1.f; fd.restitution = 0.5f; fd.friction = 0.7f;
+        body->CreateFixture(&fd);
 
-        m_drainTimer = 0.f;
-        this->spawnOrbs();
+        auto* sp = SimplePlayer::create(gm->getPlayerFrame());
+        if (sp) {
+            sp->setColors(
+                gm->colorForIdx(gm->getPlayerColor()),
+                gm->colorForIdx(gm->getPlayerColor2())
+            );
+            if (gm->getPlayerGlow())
+                sp->setGlowOutline(gm->colorForIdx(gm->getPlayerGlowColor()));
+            sp->setScale(s / 30.f);
+            sp->setPosition({-9999.f, -9999.f});
+            this->addChild(sp, 3);
+        }
+
+        m_balls.push_back({body, s * 0.5f, 0, true, sp});
     }
 
-    void ccTouchesBegan(CCSet*, CCEvent*) override {
-        if (Mod::get()->getSettingValue<bool>("dismiss-on-click"))
-            this->dismiss();
-    }
-
-    void keyBackClicked() override {
-        this->dismiss();
-    }
-
-    void onAnyKey() {
-        if (Mod::get()->getSettingValue<bool>("dismiss-on-click"))
-            this->dismiss();
-    }
-
-    void dismiss() {
-        s_active = false;
-        this->runAction(CCSequence::create(
-            CCFadeOut::create(0.25f),
-            CCCallFunc::create(this, callfunc_selector(OrbitScreensaverLayer::removeSelf)),
-            nullptr
-        ));
-    }
-
-    void removeSelf() {
-        this->removeFromParentAndCleanup(true);
+    ~ScreensaverLayer() override {
+        delete m_world;
+        m_world = nullptr;
     }
 };
 
-bool OrbitScreensaverLayer::s_active = false;
 
 static void resetIdle() {
-    s_idleSeconds = 0.f;
+    s_idleTimer = 0.f;
 }
 
-static void tryShowScreensaver() {
-    if (OrbitScreensaverLayer::s_active) return;
-    if (!Mod::get()->getSettingValue<bool>("enabled")) return;
-
-    auto scene = CCDirector::get()->getRunningScene();
+static void dismissActive() {
+    auto* scene = CCDirector::get()->getRunningScene();
     if (!scene) return;
-
-    auto firstChild = scene->getChildByType<CCLayer>(0);
-    if (firstChild) {
-        std::string name = typeid(*firstChild).name();
-        if (name.find("PlayLayer") != std::string::npos ||
-            name.find("LevelEditorLayer") != std::string::npos)
+    auto* children = scene->getChildren();
+    if (!children) return;
+    for (unsigned i = 0; i < children->count(); i++) {
+        if (auto* ss = dynamic_cast<ScreensaverLayer*>(children->objectAtIndex(i))) {
+            ss->dismiss();
             return;
-    }
-
-    OrbitScreensaverLayer::s_active = true;
-    auto layer = OrbitScreensaverLayer::create();
-    if (layer) {
-        layer->setOpacity(0);
-        scene->addChild(layer, 9999);
-        layer->runAction(CCFadeIn::create(0.4f));
-    } else {
-        OrbitScreensaverLayer::s_active = false;
+        }
     }
 }
 
-class $modify(CCDirector) {
-    void drawScene() {
-        CCDirector::drawScene();
-        if (!Mod::get()->getSettingValue<bool>("enabled")) return;
-        if (OrbitScreensaverLayer::s_active) return;
 
-        float idleSec = (float)Mod::get()->getSettingValue<int64_t>("idle-time");
-        s_idleSeconds += (float)this->getActualDeltaTime();
+class $modify(OSSCCScene, CCScene) {
+    bool init() {
+        if (!CCScene::init()) return false;
+        this->schedule(schedule_selector(OSSCCScene::idleTick), 0.f);
+        return true;
+    }
 
-        if (s_idleSeconds >= idleSec) {
-            s_idleSeconds = 0.f;
-            tryShowScreensaver();
+    void idleTick(float dt) {
+        if (s_ssActive || s_inPlayLayer) {
+            s_idleTimer = 0.f;
+            return;
+        }
+
+        s_idleTimer += dt;
+
+        float timeout = (float)Mod::get()->getSettingValue<int64_t>("idle-timeout");
+        if (s_idleTimer < timeout) return;
+
+        s_idleTimer = 0.f;
+        s_ssActive  = true;
+
+        auto* ss = ScreensaverLayer::create();
+        if (ss) {
+            ss->setZOrder(9999);
+            this->addChild(ss);
+        } else {
+            s_ssActive = false;
         }
     }
 };
 
-class $modify(CCTouchDispatcher) {
-    void touchesBegan(CCSet* t, CCEvent* e) {
-        resetIdle();
-        CCTouchDispatcher::touchesBegan(t, e);
-    }
-    void touchesMoved(CCSet* t, CCEvent* e) {
-        resetIdle();
-        CCTouchDispatcher::touchesMoved(t, e);
-    }
-    void touchesEnded(CCSet* t, CCEvent* e) {
-        resetIdle();
-        CCTouchDispatcher::touchesEnded(t, e);
+
+class $modify(OSSCCTouchDispatcher, CCTouchDispatcher) {
+    void touches(CCSet* touches, CCEvent* event, unsigned int type) {
+        CCTouchDispatcher::touches(touches, event, type);
+        if (type == CCTOUCHBEGAN) resetIdle();
     }
 };
 
-class $modify(CCKeyboardDispatcher) {
-    bool dispatchKeyboardMSG(enumKeyCodes key, bool isDown, bool isRepeat, double ts) {
-        resetIdle();
-        if (OrbitScreensaverLayer::s_active && isDown && !isRepeat) {
-            auto scene = CCDirector::get()->getRunningScene();
-            if (scene) {
-                for (auto child : CCArrayExt<CCNode*>(scene->getChildren())) {
-                    if (auto ss = dynamic_cast<OrbitScreensaverLayer*>(child)) {
-                        ss->onAnyKey();
-                        break;
-                    }
-                }
-            }
+
+class $modify(OSSCCKeyboardDispatcher, CCKeyboardDispatcher) {
+    bool dispatchKeyboardMSG(enumKeyCodes key, bool isKeyDown,
+                             bool isKeyRepeat, double timestamp)
+    {
+        bool ret = CCKeyboardDispatcher::dispatchKeyboardMSG(
+            key, isKeyDown, isKeyRepeat, timestamp);
+        if (isKeyDown && !isKeyRepeat) {
+            resetIdle();
+            dismissActive();
         }
-        return CCKeyboardDispatcher::dispatchKeyboardMSG(key, isDown, isRepeat, ts);
+        return ret;
     }
 };
 
-class $modify(CCMouseDispatcher) {
-    bool dispatchScrollMSG(float x, float y) {
-        resetIdle();
-        return CCMouseDispatcher::dispatchScrollMSG(x, y);
+
+class $modify(OSSPlayLayer, PlayLayer) {
+    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
+        s_inPlayLayer = true;
+        s_idleTimer   = 0.f;
+        dismissActive();
+        return PlayLayer::init(level, useReplay, dontCreateObjects);
+    }
+
+    void onQuit() {
+        s_inPlayLayer = false;
+        s_idleTimer   = 0.f;
+        PlayLayer::onQuit();
     }
 };
