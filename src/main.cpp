@@ -4,6 +4,7 @@
 #include <Geode/modify/CCTouchDispatcher.hpp>
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
 
+#include "BlurAPI.hpp"
 #include <box2d/box2d.h>
 
 #include <vector>
@@ -14,29 +15,23 @@
 using namespace geode::prelude;
 using namespace cocos2d;
 
-// ─── Forward declarations ─────────────────────────────────────────────────────
-
 static void resetIdle();
 static void dismissActive();
-
-// ─── Globals ──────────────────────────────────────────────────────────────────
 
 static bool  s_inPlayLayer = false;
 static float s_idleTimer   = 0.f;
 static bool  s_ssActive    = false;
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 static constexpr float PPM         = 40.f;
 static constexpr int   PLAYER_SIZE = 80;
+static constexpr float FADE_DURATION = 0.5f; 
 
-// ORB_IDS[0..9] = circle/rounded hitbox  |  ORB_IDS[10] = square hitbox
 static const int ORB_IDS[11] = {
     36, 84, 141, 1022, 1330, 1333, 1704, 1751, 3004, 3027,
     1594
 };
 
-// ─── ScreensaverLayer ─────────────────────────────────────────────────────────
+enum class BgMode { Color, Blur };
 
 class ScreensaverLayer : public CCLayerColor {
 public:
@@ -50,6 +45,7 @@ public:
     void dismiss() {
         if (m_dismissed) return;
         m_dismissed = true;
+        this->stopAllActions();
         this->unscheduleAllSelectors();
         this->removeFromParentAndCleanup(true);
         s_ssActive  = false;
@@ -57,16 +53,19 @@ public:
     }
 
 private:
-    // ── Ball ─────────────────────────────────────────────────────────────────
+
     struct Ball {
         b2Body* body     = nullptr;
-        float   radius   = 0.f;
+        float   radius   = 0.f; 
+
         int     orbIdx   = 0;
         bool    isPlayer = false;
         CCNode* node     = nullptr;
+        float   drawW    = 0.f; 
+
+        float   drawH    = 0.f;
     };
 
-    // ── Physics / sim state ───────────────────────────────────────────────────
     b2World*          m_world      = nullptr;
     b2Body*           m_wallBot    = nullptr;
     std::vector<Ball> m_balls;
@@ -81,34 +80,44 @@ private:
     float m_physAccum  = 0.f;
     float m_drainDelay = 5.f;
 
-    // Cached settings (refreshed each cycle)
-    int   m_numBalls   = 120;
-    float m_speedMult  = 1.f;
-    float m_orbScale   = 1.f;
-    int   m_cubeChance = 50;
-    bool  m_noGround   = false;
-    int   m_dropTime   = 2;  // ticks between spawns
+    int     m_numBalls   = 120;
+    float   m_speedMult  = 1.f;
+    float   m_orbScale   = 1.f;
+    int     m_cubeChance = 50;
+    bool    m_noGround   = false;
+    int     m_dropTime   = 2;
+    BgMode  m_bgMode     = BgMode::Color;
+    ccColor4B m_bgColor  = {0, 0, 0, 255};
+
+    bool  m_fadeDone   = false;
+    float m_fadeTimer  = 0.f;
 
     CCSize m_screen;
 
-    // ── init ──────────────────────────────────────────────────────────────────
     bool init() override {
-        if (!CCLayerColor::initWithColor({0, 0, 0, 255}))
+
+        auto* mod   = Mod::get();
+        m_bgColor   = mod->getSettingValue<ccColor4B>("bg-color");
+
+        bool wantBlur = mod->getSettingValue<bool>("bg-blur");
+        m_bgMode = (wantBlur && BlurAPI::isBlurAPIEnabled()) ? BgMode::Blur : BgMode::Color;
+
+        ccColor4B startColor = {m_bgColor.r, m_bgColor.g, m_bgColor.b, 0};
+        if (!CCLayerColor::initWithColor(startColor))
             return false;
 
         m_screen = CCDirector::get()->getWinSize();
         this->setContentSize(m_screen);
         this->setPosition(CCPointZero);
 
-        // Capture all touches (dismiss on any tap)
+        if (m_bgMode == BgMode::Blur)
+            BlurAPI::addBlur(this);
+
         this->setTouchEnabled(true);
         this->setTouchMode(kCCTouchesOneByOne);
-        this->setTouchPriority(-9999); // on top of everything
-
-        // Keyboard: dismiss on any key (also catches 'back' on Android)
+        this->setTouchPriority(-9999);
         this->setKeypadEnabled(true);
         this->setKeyboardEnabled(true);
-
 #ifdef GEODE_IS_DESKTOP
         this->setMouseEnabled(true);
 #endif
@@ -119,29 +128,13 @@ private:
         return true;
     }
 
-    // ── Input — touch (mobile tap / desktop click) ────────────────────────────
-    bool ccTouchBegan(CCTouch*, CCEvent*) override {
-        dismiss();
-        return true;
-    }
-
-    // ── Input — keyboard (desktop) ────────────────────────────────────────────
-    // keyDown is the CCLayer/CCKeyboardDelegate virtual for actual key presses
-    void keyDown(enumKeyCodes /*key*/, double /*timestamp*/) override {
-        dismiss();
-    }
-    // keyBackClicked: Android back / ESC
-    void keyBackClicked() override { dismiss(); }
-
-    // ── Input — mouse (desktop) ───────────────────────────────────────────────
+    bool ccTouchBegan(CCTouch*, CCEvent*) override { dismiss(); return true; }
+    void keyDown(enumKeyCodes, double) override    { dismiss(); }
+    void keyBackClicked() override                 { dismiss(); }
 #ifdef GEODE_IS_DESKTOP
-    // GD's cocos2d-x only exposes scrollWheel as a hookable mouse virtual.
-    // Mouse button clicks arrive via CCTouchDispatcher (hooked globally below).
-    // Pure cursor movement has no hook point in GD's cocos2d — acceptable tradeoff.
-    void scrollWheel(float, float) override { dismiss(); }
+    void scrollWheel(float, float) override        { dismiss(); }
 #endif
 
-    // ── Simulation cycle ──────────────────────────────────────────────────────
     void startCycle() {
         auto* mod      = Mod::get();
         m_numBalls     = (int)mod->getSettingValue<int64_t>("orb-count");
@@ -155,7 +148,6 @@ private:
         if (m_numBalls < 1)    m_numBalls = 1;
         if (m_orbScale < 0.1f) m_orbScale = 0.1f;
 
-        // Reset sim state
         m_globalTime    = 0;
         m_nextSpawn     = 0;
         m_playerSpawned = false;
@@ -164,14 +156,12 @@ private:
         m_physAccum     = 0.f;
         m_drainDelay    = 5.f + (std::rand() % 1001) / 1000.f;
 
-        // Remove old ball nodes
         for (auto& b : m_balls)
             if (b.node) b.node->removeFromParentAndCleanup(true);
         m_balls.clear();
 
-        // Rebuild Box2D world
         delete m_world;
-        m_world  = nullptr;
+        m_world   = nullptr;
         m_wallBot = nullptr;
 
         b2Vec2 grav(0.f, 9.8f * m_speedMult * 3.f);
@@ -190,21 +180,33 @@ private:
             return body;
         };
 
-        makeWall(0,   0, 0,   H); // left
-        makeWall(W,   0, W,   H); // right
+        makeWall(0, 0, 0, H);
+        makeWall(W, 0, W, H);
         if (!m_noGround)
-            m_wallBot = makeWall(0, H, W, H); // bottom
+            m_wallBot = makeWall(0, H, W, H);
     }
 
-    // ── Per-frame update ──────────────────────────────────────────────────────
     void update(float dt) override {
         if (m_dismissed) return;
+
+        if (!m_fadeDone) {
+            m_fadeTimer += dt;
+            float t = m_fadeTimer / FADE_DURATION;
+            if (t >= 1.f) {
+                t = 1.f;
+                m_fadeDone = true;
+            }
+
+            GLubyte targetAlpha = (m_bgMode == BgMode::Blur) ? 180 : m_bgColor.a;
+            this->setOpacity((GLubyte)(targetAlpha * t));
+            return; 
+
+        }
 
         float W = m_screen.width;
         float H = m_screen.height;
         m_globalTime++;
 
-        // Spawn orbs on schedule (same staggered drop as original)
         while (m_nextSpawn < m_numBalls &&
                m_globalTime >= m_dropTime * m_nextSpawn)
         {
@@ -212,27 +214,21 @@ private:
             m_nextSpawn++;
         }
 
-        // Spawn player cube halfway through the drop sequence
         if (!m_playerSpawned && m_nextSpawn >= m_numBalls / 2) {
             m_playerSpawned = true;
             if ((std::rand() % 100) < m_cubeChance)
                 spawnPlayerCube(W, H);
         }
 
-        // Wait for fill + drain delay, then remove floor and let orbs fall out
         if (!m_noGround && !m_fillingDone && m_nextSpawn >= m_numBalls) {
             int drainFrame = m_numBalls * m_dropTime + (int)(m_drainDelay * 60.f);
             if (m_globalTime >= drainFrame) {
                 m_fillingDone = true;
                 m_draining    = true;
-                if (m_wallBot) {
-                    m_world->DestroyBody(m_wallBot);
-                    m_wallBot = nullptr;
-                }
+                if (m_wallBot) { m_world->DestroyBody(m_wallBot); m_wallBot = nullptr; }
             }
         }
 
-        // Restart cycle once every ball is off screen
         if (!m_noGround && m_draining) {
             bool allOff = true;
             for (auto& b : m_balls)
@@ -240,40 +236,30 @@ private:
             if (allOff) { startCycle(); return; }
         }
         if (m_noGround && m_globalTime > m_numBalls * m_dropTime + 500) {
-            startCycle();
-            return;
+            startCycle(); return;
         }
 
-        // Step physics — let the game's own dt drive this (no fixed-step FPS)
         m_physAccum += dt;
         if (m_physAccum > 0.f) {
             m_world->Step(m_physAccum, 8, 3);
             m_physAccum = 0.f;
         }
 
-        // Sync Cocos2d node positions from Box2D bodies.
-        // Box2D: Y+ is DOWN, origin top-left in our setup (gravity pushes +Y).
-        // Cocos2d: Y+ is UP, origin bottom-left.
-        // So:  cocos_y = screenH - box2d_pixel_y
         for (auto& b : m_balls) {
             if (!b.node) continue;
             float px = b.body->GetPosition().x * PPM;
             float py = b.body->GetPosition().y * PPM;
             b.node->setPosition({px, H - py});
-            // Negate angle because Cocos2d rotates clockwise for positive angles,
-            // Box2D rotates counter-clockwise for positive angles.
             float angDeg = -b.body->GetAngle() * (180.f / (float)M_PI);
             b.node->setRotation(angDeg);
         }
     }
 
-    // ── Spawn helpers ─────────────────────────────────────────────────────────
-    void spawnOrb(float W, float /*H*/) {
+    void spawnOrb(float W, float ) {
         float radius = (40.f + std::rand() % 20) * m_orbScale;
         int   orbIdx = std::rand() % 11;
         bool  isBox  = (orbIdx == 10);
 
-        // Box2D body spawns above the visible area
         b2BodyDef bd;
         bd.type = b2_dynamicBody;
         bd.position.Set(
@@ -297,25 +283,37 @@ private:
             fd.shape    = &cs;
         }
         body->CreateFixture(&fd);
-        // Slight random horizontal nudge (same as original)
         body->ApplyLinearImpulse(
             b2Vec2((10 - std::rand() % 21) * 0.05f, 0.f),
             body->GetWorldCenter(), true
         );
 
-        // GD object visual — createWithKey handles sprite setup internally.
-        // Scale so the visual matches the physics radius (≈30px at GD scale 1).
         auto* obj = GameObject::createWithKey(ORB_IDS[orbIdx]);
+        float drawW = radius * 2.f;
+        float drawH = radius * 2.f;
+
         if (obj) {
-            obj->setRScale((radius * 2.f) / 30.f);
-            obj->setPosition({-9999.f, -9999.f}); // hidden until first update tick
+
             this->addChild(obj, 2);
+            CCSize cs2 = obj->getContentSize();
+            float  longest = std::max(cs2.width, cs2.height);
+            if (longest > 0.f) {
+                float sc = (radius * 2.f) / longest;
+                obj->setRScale(sc);
+                drawW = cs2.width  * sc;
+                drawH = cs2.height * sc;
+            } else {
+
+                float sc = (radius * 2.f) / 30.f;
+                obj->setRScale(sc);
+            }
+            obj->setPosition({-9999.f, -9999.f});
         }
 
-        m_balls.push_back({body, radius, orbIdx, false, obj});
+        m_balls.push_back({body, radius, orbIdx, false, obj, drawW, drawH});
     }
 
-    void spawnPlayerCube(float W, float /*H*/) {
+    void spawnPlayerCube(float W, float ) {
         auto* gm = GameManager::get();
         float s  = (float)PLAYER_SIZE * m_orbScale;
 
@@ -334,9 +332,9 @@ private:
         fd.shape = &ps; fd.density = 1.f; fd.restitution = 0.5f; fd.friction = 0.7f;
         body->CreateFixture(&fd);
 
-        // SimplePlayer renders the user's currently equipped cube icon with
-        // their chosen primary/secondary colours and optional glow.
         auto* sp = SimplePlayer::create(gm->getPlayerFrame());
+        float drawW = s, drawH = s;
+
         if (sp) {
             sp->setColors(
                 gm->colorForIdx(gm->getPlayerColor()),
@@ -344,22 +342,31 @@ private:
             );
             if (gm->getPlayerGlow())
                 sp->setGlowOutline(gm->colorForIdx(gm->getPlayerGlowColor()));
-            sp->setScale(s / 30.f);
-            sp->setPosition({-9999.f, -9999.f});
+
             this->addChild(sp, 3);
+            CCSize cs2 = sp->getContentSize();
+            float longest = std::max(cs2.width, cs2.height);
+            if (longest > 0.f) {
+                float sc = s / longest;
+                sp->setScale(sc);
+                drawW = cs2.width  * sc;
+                drawH = cs2.height * sc;
+            } else {
+                sp->setScale(s / 30.f);
+            }
+            sp->setPosition({-9999.f, -9999.f});
         }
 
-        m_balls.push_back({body, s * 0.5f, 0, true, sp});
+        m_balls.push_back({body, s * 0.5f, 0, true, sp, drawW, drawH});
     }
 
-    // ── Destructor ────────────────────────────────────────────────────────────
     ~ScreensaverLayer() override {
+        if (m_bgMode == BgMode::Blur)
+            BlurAPI::removeBlur(this);
         delete m_world;
         m_world = nullptr;
     }
 };
-
-// ─── Global input helpers ─────────────────────────────────────────────────────
 
 static void resetIdle() {
     s_idleTimer = 0.f;
@@ -377,10 +384,6 @@ static void dismissActive() {
         }
     }
 }
-
-// ─── CCScene hook — idle timer ────────────────────────────────────────────────
-// Hooks every scene's init to schedule a per-frame idle tick.
-// When the timeout is reached the screensaver layer is added to the scene.
 
 class $modify(OSSCCScene, CCScene) {
     bool init() {
@@ -413,18 +416,12 @@ class $modify(OSSCCScene, CCScene) {
     }
 };
 
-// ─── Touch hook — reset idle on any tap / click ───────────────────────────────
-// ScreensaverLayer handles its own ccTouchBegan for self-dismissal.
-// This hook just resets the idle timer globally.
-
 class $modify(OSSCCTouchDispatcher, CCTouchDispatcher) {
     void touches(CCSet* touches, CCEvent* event, unsigned int type) {
         CCTouchDispatcher::touches(touches, event, type);
         if (type == CCTOUCHBEGAN) resetIdle();
     }
 };
-
-// ─── Keyboard hook — reset idle + dismiss on any key ─────────────────────────
 
 class $modify(OSSCCKeyboardDispatcher, CCKeyboardDispatcher) {
     bool dispatchKeyboardMSG(enumKeyCodes key, bool isKeyDown,
@@ -440,13 +437,12 @@ class $modify(OSSCCKeyboardDispatcher, CCKeyboardDispatcher) {
     }
 };
 
-// ─── PlayLayer hooks — suppress screensaver while in a level ─────────────────
-
+// fuck
 class $modify(OSSPlayLayer, PlayLayer) {
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
         s_inPlayLayer = true;
         s_idleTimer   = 0.f;
-        dismissActive(); // shouldn't normally be visible, but just in case
+        dismissActive();
         return PlayLayer::init(level, useReplay, dontCreateObjects);
     }
 
