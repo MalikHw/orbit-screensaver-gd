@@ -23,13 +23,13 @@ static float s_idleTimer   = 0.f;
 static bool  s_ssActive    = false;
 
 static constexpr float PPM           = 40.f;
-static constexpr int   PLAYER_SIZE   = 80;
 static constexpr float FADE_DURATION = 0.5f;
 
-static const int ORB_IDS[11] = {
-    36, 84, 141, 1022, 1330, 1333, 1704, 1751, 3004, 3027,
-    1594
-};
+static const int   ORB_IDS[11]      = { 36,   84,   141,   1022,  1330,  1333,  1704,  1751,  3004,  3027,  1594  };
+// full content sizes from device log — used directly as box2d radius or half-extent
+static const float ORB_FULL_SIZE[11] = { 30.f, 30.f, 30.5f, 29.5f, 32.5f, 31.5f, 39.f,  39.f,  39.f,  36.5f, 28.5f };
+// SimplePlayer content size on device
+static constexpr float PLAYER_FULL_SIZE = 68.f;
 
 enum class BgMode { Color, Blur };
 
@@ -78,7 +78,6 @@ private:
 
     int     m_numBalls   = 120;
     float   m_speedMult  = 1.f;
-    float   m_orbScale   = 1.f;
     int     m_cubeChance = 50;
     bool    m_noGround   = false;
     int     m_dropTime   = 2;
@@ -133,15 +132,13 @@ private:
     void startCycle() {
         auto* mod      = Mod::get();
         m_numBalls     = (int)mod->getSettingValue<int64_t>("orb-count");
-        m_orbScale     = (float)mod->getSettingValue<double>("orb-scale");
         m_cubeChance   = (int)mod->getSettingValue<int64_t>("cube-chance");
         m_noGround     = mod->getSettingValue<bool>("no-ground");
         float rawSpeed = (float)mod->getSettingValue<int64_t>("orb-speed");
         m_speedMult    = rawSpeed / 10.f;
         m_dropTime     = std::max(1, (int)(20.f / m_speedMult));
 
-        if (m_numBalls < 1)    m_numBalls = 1;
-        if (m_orbScale < 0.1f) m_orbScale = 0.1f;
+        if (m_numBalls < 1) m_numBalls = 1;
 
         m_globalTime    = 0;
         m_nextSpawn     = 0;
@@ -247,9 +244,10 @@ private:
     }
 
     void spawnOrb(float W, float) {
-        float radius = (40.f + std::rand() % 20) * m_orbScale;
-        int   orbIdx = std::rand() % 11;
-        bool  isBox  = (orbIdx == 10);
+        int   orbIdx  = std::rand() % 11;
+        bool  isBox   = (orbIdx == 10);
+        float size    = ORB_FULL_SIZE[orbIdx]; // full content size from device
+        float half    = size * 0.5f;
 
         b2BodyDef bd;
         bd.type = b2_dynamicBody;
@@ -267,10 +265,10 @@ private:
         fd.density = 1.f; fd.restitution = 0.5f; fd.friction = 1.f;
 
         if (isBox) {
-            ps.SetAsBox(radius / PPM, radius / PPM);
+            ps.SetAsBox(half / PPM, half / PPM);
             fd.shape = &ps;
         } else {
-            cs.m_radius = radius / PPM;
+            cs.m_radius = half / PPM;
             fd.shape    = &cs;
         }
         body->CreateFixture(&fd);
@@ -283,18 +281,15 @@ private:
         if (obj) {
             this->addChild(obj, 2);
             obj->setScale(1.f);
-            CCSize cs2    = obj->getContentSize();
-            float longest = std::max(cs2.width, cs2.height);
-            float radius  = longest * 0.5f;  // physics matches texture exactly
-            // then build the body with THIS radius, not the random one
+            obj->setPosition({-9999.f, -9999.f});
         }
 
-        m_balls.push_back({body, radius, orbIdx, false, obj});
+        m_balls.push_back({body, half, orbIdx, false, obj});
     }
 
     void spawnPlayerCube(float W, float) {
         auto* gm = GameManager::get();
-        float s  = (float)PLAYER_SIZE * m_orbScale;
+        float half = PLAYER_FULL_SIZE * 0.5f;
 
         b2BodyDef bd;
         bd.type = b2_dynamicBody;
@@ -306,7 +301,7 @@ private:
 
         b2Body* body = m_world->CreateBody(&bd);
         b2PolygonShape ps;
-        ps.SetAsBox((s * 0.5f) / PPM, (s * 0.5f) / PPM);
+        ps.SetAsBox(half / PPM, half / PPM);
         b2FixtureDef fd;
         fd.shape = &ps; fd.density = 1.f; fd.restitution = 0.5f; fd.friction = 0.7f;
         body->CreateFixture(&fd);
@@ -322,14 +317,10 @@ private:
 
             this->addChild(sp, 3);
             sp->setScale(1.f);
-            CCSize cs2    = sp->getContentSize();
-            float longest = std::max(cs2.width, cs2.height);
-            float sc      = (longest > 0.f) ? s / longest : s / 30.f;
-            sp->setScale(sc);
             sp->setPosition({-9999.f, -9999.f});
         }
 
-        m_balls.push_back({body, s * 0.5f, 0, true, sp});
+        m_balls.push_back({body, half, 0, true, sp});
     }
 
     ~ScreensaverLayer() override {
