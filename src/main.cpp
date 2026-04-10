@@ -26,7 +26,7 @@ static constexpr float PPM           = 40.f;
 static constexpr float FADE_DURATION = 0.5f;
 
 static const int   ORB_IDS[11]   = { 36,    84,    141,    1022,  1330,   1333,   1704,  1751,  3004,  3027,  1594  };
-static const float ORB_RADII[11] = { 15.f,  15.f,  15.25f, 14.75f,16.25f, 15.75f, 19.5f, 19.5f, 19.5f, 18.25f,14.25f};
+static const float ORB_RADII[11] = { 30.f,  30.f,  30.5f, 29.5f, 32.5f,  31.5f,  39.f,  39.f,  39.f,  36.5f, 28.5f};
 
 enum class BgMode { Color, Blur };
 
