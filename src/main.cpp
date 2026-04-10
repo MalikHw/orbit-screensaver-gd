@@ -285,9 +285,8 @@ private:
             obj->setScale(1.f);
             CCSize cs2    = obj->getContentSize();
             float longest = std::max(cs2.width, cs2.height);
-            float sc      = (longest > 0.f) ? (radius * 2.f) / longest : (radius * 2.f) / 30.f;
-            obj->setScale(sc);
-            obj->setPosition({-9999.f, -9999.f});
+            float radius  = longest * 0.5f;  // physics matches texture exactly
+            // then build the body with THIS radius, not the random one
         }
 
         m_balls.push_back({body, radius, orbIdx, false, obj});
