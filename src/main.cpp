@@ -293,19 +293,17 @@ private:
         float drawH = radius * 2.f;
 
         if (obj) {
-
             this->addChild(obj, 2);
             CCSize cs2 = obj->getContentSize();
-            float  longest = std::max(cs2.width, cs2.height);
+            float longest = std::max(cs2.width, cs2.height);
             if (longest > 0.f) {
+                obj->setScale(1.f);
                 float sc = (radius * 2.f) / longest;
-                obj->setRScale(sc);
+                obj->setScale(sc);
                 drawW = cs2.width  * sc;
                 drawH = cs2.height * sc;
             } else {
-
-                float sc = (radius * 2.f) / 30.f;
-                obj->setRScale(sc);
+                obj->setScale((radius * 2.f) / 30.f);
             }
             obj->setPosition({-9999.f, -9999.f});
         }
