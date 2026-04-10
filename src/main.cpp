@@ -25,10 +25,8 @@ static bool  s_ssActive    = false;
 static constexpr float PPM           = 40.f;
 static constexpr float FADE_DURATION = 0.5f;
 
-// ORB_IDS[i] and ORB_RADII[i] are paired — radius is the physics half-extent in pixels
-// index 10 (id 1594) is the block, uses box shape
-static const int   ORB_IDS[11]    = { 36,  84, 141, 1022, 1330, 1333, 1704, 1751, 3004, 3027, 1594 };
-static const float ORB_RADII[11]  = { 25, 25,  25,   25,   25,   25,   25,   25,   25,   25,   25  };
+static const int   ORB_IDS[11]   = { 36,    84,    141,    1022,  1330,   1333,   1704,  1751,  3004,  3027,  1594  };
+static const float ORB_RADII[11] = { 15.f,  15.f,  15.25f, 14.75f,16.25f, 15.75f, 19.5f, 19.5f, 19.5f, 18.25f,14.25f};
 
 enum class BgMode { Color, Blur };
 
@@ -279,13 +277,6 @@ private:
         if (obj) {
             this->addChild(obj, 2);
             obj->setScale(1.f);
-            CCSize cs2 = obj->getContentSize();
-    
-            auto path = Mod::get()->getSaveDir() / "orb_sizes.txt";
-            auto f = std::ofstream(path, std::ios::app);
-             f << "orbIdx=" << orbIdx << " id=" << ORB_IDS[orbIdx] 
-              << " size=" << cs2.width << "x" << cs2.height << "\n";
-    
             obj->setPosition({-9999.f, -9999.f});
         }
 
@@ -309,8 +300,8 @@ private:
         sp->setScale(1.f);
         sp->setPosition({-9999.f, -9999.f});
 
-        CCSize cs2   = sp->getContentSize();
-        float  half  = std::max(cs2.width, cs2.height) * 0.5f;
+        CCSize cs2  = sp->getContentSize();
+        float  half = std::max(cs2.width, cs2.height) * 0.5f;
 
         b2BodyDef bd;
         bd.type = b2_dynamicBody;
