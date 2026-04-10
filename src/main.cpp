@@ -279,6 +279,13 @@ private:
         if (obj) {
             this->addChild(obj, 2);
             obj->setScale(1.f);
+            CCSize cs2 = obj->getContentSize();
+    
+            auto path = Mod::get()->getSaveDir() / "orb_sizes.txt";
+            auto f = std::ofstream(path, std::ios::app);
+             f << "orbIdx=" << orbIdx << " id=" << ORB_IDS[orbIdx] 
+              << " size=" << cs2.width << "x" << cs2.height << "\n";
+    
             obj->setPosition({-9999.f, -9999.f});
         }
 
