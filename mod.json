@@ -10,121 +10,97 @@
     "id": "malikhw47.orbit-screensaver",
     "name": "Orbit Ballpit Screensaver",
     "developer": "MalikHw47",
-    "description": "Orbit Ballpit screensaver that activates when you're idle anywhere in GD.",
-    "repository": "https://github.com/MalikHw/orbit-screensaver-gd",
-    "tags": ["customization", "interface", "offline", "universal"],
+    "description": "A physics ballpit screensaver that runs on top of GD after idle time.",
+    "tags": ["gameplay", "enhancement", "utility"],
+    "links": {
+        "homepage": "https://malikhw.github.io",
+        "source": "https://github.com/MalikHw/orbit-screensaver-gd",
+        "community": "https://discord.gg/G9bZ92eg2n"
+    },
     "settings": {
-        "general-title": {
+        "physics-title": {
             "type": "title",
-            "name": "General"
+            "name": "Physics & Simulation"
         },
-        "enabled": {
-            "name": "Toggle",
-            "description": "toggle the screensaver on or off",
-            "type": "bool",
-            "default": true
-        },
-        "idle-time": {
-            "name": "Idle Time (secs)",
-            "description": "how many seconds of no input before the screensaver activates?",
+        "idle-timeout": {
+            "name": "Idle Timeout (seconds)",
+            "description": "How many seconds of no input before the screensaver appears.",
             "type": "int",
             "default": 30,
             "min": 5,
             "max": 300,
             "control": {
-                "arrows": true,
-                "arrow-step": 5,
-                "big-arrows": true,
-                "big-arrow-step": 30,
                 "slider": true,
-                "slider-step": 5,
-                "input": true
+                "arrows": true,
+                "arrow-step": 5
             }
         },
-        "physics-title": {
+        "orb-speed": {
+            "name": "Speed",
+            "description": "Gravity speed multiplier.",
+            "type": "int",
+            "default": 10,
+            "min": 1,
+            "max": 20,
+            "control": {
+                "slider": true,
+                "arrows": true
+            }
+        },
+        "orbs-title": {
             "type": "title",
-            "name": "physics"
+            "name": "Orbs"
         },
         "orb-count": {
-            "name": "Orb count",
-            "description": "how many orbs to spawn in the ballpit?",
+            "name": "Orb Count",
+            "description": "Total number of orbs/objects to spawn each cycle.",
             "type": "int",
-            "default": 40,
+            "default": 120,
             "min": 1,
-            "max": 200,
+            "max": 300,
             "control": {
-                "arrows": true,
-                "arrow-step": 5,
-                "big-arrows": true,
-                "big-arrow-step": 20,
                 "slider": true,
-                "input": true
+                "arrows": true,
+                "arrow-step": 10
             }
         },
         "orb-scale": {
-            "name": "orb size",
-            "description": "scale multiplier for all orbs",
+            "name": "Orb Size",
+            "description": "Scale multiplier for all spawned orbs.",
             "type": "float",
             "default": 1.0,
             "min": 0.3,
             "max": 3.0,
             "control": {
-                "arrows": true,
-                "arrow-step": 0.1,
                 "slider": true,
-                "slider-step": 0.1
+                "arrows": false
             }
         },
-        "speed": {
-            "name": "gravity speed",
-            "description": "how fast gravity pulls the orbs down?",
-            "type": "float",
-            "default": 1.0,
-            "min": 0.1,
-            "max": 3.0,
-            "control": {
-                "arrows": true,
-                "arrow-step": 0.1,
-                "slider": true,
-                "slider-step": 0.1
-            }
-        },
-        "no-ground": {
-            "name": "no ground (Infinite Fall)",
-            "description": "When enabled, orbs fall through the bottom and reset, basically drain mode",
-            "type": "bool",
-            "default": false
+        "cube-title": {
+            "type": "title",
+            "name": "Player Cube"
         },
         "cube-chance": {
             "name": "Cube Spawn Chance (%)",
-            "description": "chance (0-100) that your player cube icon also spawns in the ballpit?",
+            "description": "Probability (0-100) that your equipped cube will also appear in the ballpit.",
             "type": "int",
             "default": 50,
             "min": 0,
             "max": 100,
             "control": {
                 "slider": true,
-                "slider-step": 5,
-                "arrows": true,
-                "arrow-step": 5,
-                "input": true
+                "arrows": true
             }
         },
-        "visual-title": {
+        "misc-title": {
             "type": "title",
-            "name": "visuals"
+            "name": "Misc"
         },
-        "bg-color": {
-            "name": "background color",
-            "description": "background color of the screensaver overlay",
-            "type": "rgba",
-            "default": [0, 0, 0, 230]
-        },
-        "dismiss-on-click": {
-            "name": "Dismiss on Any Input",
-            "description": "Dismiss the screensaver when the player clicks, taps, or presses a key.",
+        "no-ground": {
+            "name": "No Ground (Infinite Fall)",
+            "description": "Orbs fall off the bottom of the screen instead of piling up.",
             "type": "bool",
-            "default": true
+            "default": false
         }
     }
 }
