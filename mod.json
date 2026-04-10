@@ -37,7 +37,7 @@
         },
         "orb-speed": {
             "name": "Speed",
-            "description": "Gravity speed multiplier.",
+            "description": "Gravity/physics speed multiplier.",
             "type": "int",
             "default": 10,
             "min": 1,
@@ -92,6 +92,22 @@
                 "arrows": true
             }
         },
+        "bg-title": {
+            "type": "title",
+            "name": "Background"
+        },
+        "bg-color": {
+            "name": "Background Color & Opacity",
+            "description": "Color and opacity of the screensaver overlay. Alpha controls transparency.",
+            "type": "rgba",
+            "default": "#000000ff"
+        },
+        "bg-blur": {
+            "name": "Blur Background",
+            "description": "Blur the scene behind the screensaver (requires thesillydoggo.blur-api to be installed and enabled).",
+            "type": "bool",
+            "default": false
+        },
         "misc-title": {
             "type": "title",
             "name": "Misc"
@@ -102,5 +118,12 @@
             "type": "bool",
             "default": false
         }
-    }
+    },
+    "suggested": [
+        {
+            "id": "thesillydoggo.blur-api",
+            "importance": "recommended",
+            "reason": "Enables blur background option in screensaver settings"
+        }
+    ]
 }
