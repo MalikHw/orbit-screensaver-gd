@@ -7,9 +7,9 @@ A port of a screensaver i made for windows/android to GD directly based on MindC
 - Uses your own cube
 - Custom background color/opacity
 - BLUR mode! (suggested mod)
-<hr>
+
 <mod:thesillydoggo.blur-api>
-<hr>
+
 - and more soon...
 
 #### What's not working:
