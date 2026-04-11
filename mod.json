@@ -9,7 +9,7 @@
     "id": "malikhw47.orbit-screensaver",
     "name": "Orbit Ballpit Screensaver",
     "developer": "MalikHw47",
-    "description": "A physics ballpit screensaver that runs on top of GD after idle time.",
+    "description": "A screensaver for GD.",
     "tags": [ "offline", "customization", "interface", "universal"],
     "links": {
         "source": "https://github.com/MalikHw/orbit-screensaver-gd",
