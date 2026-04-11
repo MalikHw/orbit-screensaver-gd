@@ -35,7 +35,7 @@
         },
         "orb-speed": {
             "name": "Speed",
-            "description": "Gravity/physics speed multiplier",
+            "description": "Gravity speed multiplier",
             "type": "int",
             "default": 10,
             "min": 1,
