@@ -40,7 +40,7 @@ class ScreensaverLayer : public CCLayerColor {
 public:
     static ScreensaverLayer* create() {
         auto* ret = new ScreensaverLayer();
-        if (ret && ret->init()) { ret->autorelease(); return ret; }
+        if (ret && ret->init()) { ret->autorelease(); ret->setTag(2047); return ret; }
         CC_SAFE_DELETE(ret);
         return nullptr;
     }
@@ -343,13 +343,8 @@ static void resetIdle() {
 static void dismissActive() {
     auto* scene = CCDirector::get()->getRunningScene();
     if (!scene) return;
-    auto* children = scene->getChildren();
-    if (!children) return;
-    for (unsigned i = 0; i < children->count(); i++) {
-        if (auto* ss = dynamic_cast<ScreensaverLayer*>(children->objectAtIndex(i))) {
-            ss->dismiss();
-            return;
-        }
+    if (auto* ss = scene->getChildByTag(2047)) {
+        static_cast<ScreensaverLayer*>(ss)->dismiss();
     }
 }
 
