@@ -5,6 +5,7 @@
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
 #ifdef GEODE_IS_DESKTOP
 #include <Geode/modify/CCMouseDispatcher.hpp>
+#include <alphalaneous.alphas-ui-pack/include/touch/TouchDispatcher.hpp>
 #endif
 
 #include "BlurAPI.hpp"
@@ -24,12 +25,6 @@ static void dismissActive();
 static bool  s_inPlayLayer = false;
 static float s_idleTimer   = 0.f;
 static bool  s_ssActive    = false;
-
-#ifdef GEODE_IS_DESKTOP
-// Last known mouse position for idle detection
-static CCPoint s_lastMousePos = { -1.f, -1.f };
-static bool    s_mouseEverMoved = false;
-#endif
 
 static constexpr float PPM           = 40.f;
 static constexpr float FADE_DURATION = 0.5f;
@@ -370,21 +365,6 @@ class $modify(OSSCCScene, CCScene) {
             return;
         }
 
-#ifdef GEODE_IS_DESKTOP
-        // Poll mouse position each tick — if it moved, reset idle timer.
-        // This is the same approach Hover.cpp uses (getMousePos() every update).
-        auto curMouse = getMousePos();
-        if (!s_mouseEverMoved) {
-            // First tick: just record position, don't count it as movement
-            s_lastMousePos   = curMouse;
-            s_mouseEverMoved = true;
-        } else if (curMouse.x != s_lastMousePos.x || curMouse.y != s_lastMousePos.y) {
-            s_lastMousePos = curMouse;
-            s_idleTimer    = 0.f;
-            return;
-        }
-#endif
-
         s_idleTimer += dt;
 
         float timeout = (float)Mod::get()->getSettingValue<int64_t>("idle-timeout");
@@ -424,9 +404,19 @@ class $modify(OSSCCKeyboardDispatcher, CCKeyboardDispatcher) {
     }
 };
 
-// Hook CCMouseDispatcher to catch mouse movement on pc
-// screensaver won't spawn while the cursor is moving
 #ifdef GEODE_IS_DESKTOP
+// Hook alphas-ui-pack's TouchDispatcher to detect cursor movement (ALPHAAAAA >W<)
+// hovers() is called whenever the mouse moves without a button held
+// so it's the perfect place to reset idle and dismiss the screensaver
+class $modify(OSSTouchDispatcher, alpha::dispatcher::TouchDispatcher) {
+    void hovers(alpha::dispatcher::TouchEvent* touch) {
+        alpha::dispatcher::TouchDispatcher::hovers(touch);
+        resetIdle();
+        dismissActive();
+    }
+};
+
+// Still hook scroll wheel via CCMouseDispatcher
 class $modify(OSSCCMouseDispatcher, CCMouseDispatcher) {
     bool dispatchScrollMSG(float x, float y) {
         resetIdle();
