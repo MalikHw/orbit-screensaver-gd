@@ -5,21 +5,20 @@
         "mac": "2.2081",
         "android": "2.2081"
     },
-    "version": "v0.0.1",
+    "version": "v1.0.0-beta",
     "id": "malikhw47.orbit-screensaver",
     "name": "Orbit Ballpit Screensaver",
     "developer": "MalikHw47",
     "description": "A physics ballpit screensaver that runs on top of GD after idle time.",
     "tags": [ "offline", "customization", "interface", "universal"],
     "links": {
-        "homepage": "https://malikhw.github.io",
         "source": "https://github.com/MalikHw/orbit-screensaver-gd",
         "community": "https://discord.gg/G9bZ92eg2n"
     },
     "settings": {
         "physics-title": {
             "type": "title",
-            "name": "Physics & Simulation"
+            "name": "Physics"
         },
         "idle-timeout": {
             "name": "Idle Timeout (seconds)",
