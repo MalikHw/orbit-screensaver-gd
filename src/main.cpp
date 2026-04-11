@@ -3,6 +3,9 @@
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/CCTouchDispatcher.hpp>
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
+#ifdef GEODE_IS_DESKTOP
+#include <Geode/modify/CCMouseDispatcher.hpp>
+#endif
 
 #include "BlurAPI.hpp"
 #include <box2d/box2d.h>
@@ -21,6 +24,12 @@ static void dismissActive();
 static bool  s_inPlayLayer = false;
 static float s_idleTimer   = 0.f;
 static bool  s_ssActive    = false;
+
+#ifdef GEODE_IS_DESKTOP
+// Last known mouse position for idle detection
+static CCPoint s_lastMousePos = { -1.f, -1.f };
+static bool    s_mouseEverMoved = false;
+#endif
 
 static constexpr float PPM           = 40.f;
 static constexpr float FADE_DURATION = 0.5f;
@@ -361,6 +370,21 @@ class $modify(OSSCCScene, CCScene) {
             return;
         }
 
+#ifdef GEODE_IS_DESKTOP
+        // Poll mouse position each tick — if it moved, reset idle timer.
+        // This is the same approach Hover.cpp uses (getMousePos() every update).
+        auto curMouse = getMousePos();
+        if (!s_mouseEverMoved) {
+            // First tick: just record position, don't count it as movement
+            s_lastMousePos   = curMouse;
+            s_mouseEverMoved = true;
+        } else if (curMouse.x != s_lastMousePos.x || curMouse.y != s_lastMousePos.y) {
+            s_lastMousePos = curMouse;
+            s_idleTimer    = 0.f;
+            return;
+        }
+#endif
+
         s_idleTimer += dt;
 
         float timeout = (float)Mod::get()->getSettingValue<int64_t>("idle-timeout");
@@ -399,6 +423,18 @@ class $modify(OSSCCKeyboardDispatcher, CCKeyboardDispatcher) {
         return ret;
     }
 };
+
+// Hook CCMouseDispatcher to catch mouse movement on pc
+// screensaver won't spawn while the cursor is moving
+#ifdef GEODE_IS_DESKTOP
+class $modify(OSSCCMouseDispatcher, CCMouseDispatcher) {
+    bool dispatchScrollMSG(float x, float y) {
+        resetIdle();
+        dismissActive();
+        return CCMouseDispatcher::dispatchScrollMSG(x, y);
+    }
+};
+#endif
 
 // fuck
 class $modify(OSSPlayLayer, PlayLayer) {
