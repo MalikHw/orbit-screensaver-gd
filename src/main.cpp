@@ -32,7 +32,7 @@ static const int   ORB_IDS[11]      = { 36,   84,   141,   1022,  1330,  1333,  
 // full content sizes from device log — used directly as box2d radius or half-extent
 static const float ORB_FULL_SIZE[11] = { 32.3f, 32.5f, 32.6f, 31.76f, 35.f, 33.57f, 41.f,  41.f,  41.f,  39.1f, 30.5f };
 // SimplePlayer content size on device
-static constexpr float PLAYER_FULL_SIZE = 67.f;
+static constexpr float PLAYER_FULL_SIZE = 54.f;
 
 enum class BgMode { Color, Blur };
 
