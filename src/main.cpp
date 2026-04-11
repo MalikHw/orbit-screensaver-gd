@@ -26,13 +26,13 @@ static constexpr float PPM           = 40.f;
 static constexpr float FADE_DURATION = 0.5f;
 
 // TO FIX TOMORROW
-// 36,   84,   141,   1022,  1330,  1333,  1704,  1751,  3004,  3027,  1594
+// 36,     84,   141,   1022,  1330,  1333,  1704,  1751,  3004,  3027,  1594
 // yellow, blue, pink, green, black, red, dash, dash2, spider, teleport, toggle
 static const int   ORB_IDS[11]      = { 36,   84,   141,   1022,  1330,  1333,  1704,  1751,  3004,  3027,  1594  };
 // full content sizes from device log — used directly as box2d radius or half-extent
-static const float ORB_FULL_SIZE[11] = { 32.3f, 32.5f, 32.6f, 31.76f, 35.f, 33.57f, 41.f,  41.f,  41.f,  39.1f, 30.5f };
+static const float ORB_FULL_SIZE[11] = { 32.3f, 32.5f, 32.6f, 31.76f, 35.6f, 33.7f, 41.f,  41.f,  41.f,  39.1f, 30.5f };
 // SimplePlayer content size on device
-static constexpr float PLAYER_FULL_SIZE = 54.f;
+static constexpr float PLAYER_FULL_SIZE = 41.f;
 
 enum class BgMode { Color, Blur };
 
@@ -243,7 +243,7 @@ private:
             float px = b.body->GetPosition().x * PPM;
             float py = b.body->GetPosition().y * PPM;
             b.node->setPosition({px, H - py});
-            float angDeg = -b.body->GetAngle() * (180.f / (float)M_PI);
+            float angDeg = b.body->GetAngle() * (180.f / (float)M_PI);
             b.node->setRotation(angDeg);
         }
     }
