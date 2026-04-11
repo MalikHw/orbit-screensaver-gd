@@ -15,13 +15,6 @@
         "source": "https://github.com/MalikHw/orbit-screensaver-gd",
         "community": "https://discord.gg/G9bZ92eg2n"
     },
-    "dependencies": [
-        {
-            "id": "alphalaneous.alphas-ui-pack",
-            "version": ">=1.1.0",
-            "importance": "required"
-        }
-    ],
     "settings": {
         "physics-title": {
             "type": "title",

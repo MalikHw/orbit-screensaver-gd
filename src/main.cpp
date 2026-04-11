@@ -3,10 +3,6 @@
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/CCTouchDispatcher.hpp>
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
-#ifdef GEODE_IS_DESKTOP
-#include <Geode/modify/CCMouseDispatcher.hpp>
-#include <alphalaneous.alphas-ui-pack/include/touch/TouchDispatcher.hpp>
-#endif
 
 #include "BlurAPI.hpp"
 #include <box2d/box2d.h>
@@ -403,28 +399,6 @@ class $modify(OSSCCKeyboardDispatcher, CCKeyboardDispatcher) {
         return ret;
     }
 };
-
-#ifdef GEODE_IS_DESKTOP
-// Hook alphas-ui-pack's TouchDispatcher to detect cursor movement (ALPHAAAAA >W<)
-// hovers() is called whenever the mouse moves without a button held
-// so it's the perfect place to reset idle and dismiss the screensaver
-class $modify(OSSTouchDispatcher, alpha::dispatcher::TouchDispatcher) {
-    void hovers(alpha::dispatcher::TouchEvent* touch) {
-        alpha::dispatcher::TouchDispatcher::hovers(touch);
-        resetIdle();
-        dismissActive();
-    }
-};
-
-// Still hook scroll wheel via CCMouseDispatcher
-class $modify(OSSCCMouseDispatcher, CCMouseDispatcher) {
-    bool dispatchScrollMSG(float x, float y) {
-        resetIdle();
-        dismissActive();
-        return CCMouseDispatcher::dispatchScrollMSG(x, y);
-    }
-};
-#endif
 
 // fuck
 class $modify(OSSPlayLayer, PlayLayer) {
