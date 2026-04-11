@@ -24,9 +24,6 @@ endif()
 
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 
-# ALPHAA
-target_link_libraries(${PROJECT_NAME} geode-sdk alphalaneous.alphas-ui-pack)
-
 include(FetchContent)
 
 set(BOX2D_BUILD_TESTBED OFF CACHE BOOL "" FORCE)
@@ -42,8 +39,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(box2d)
 
+
 target_link_libraries(${PROJECT_NAME} box2d)
 target_include_directories(${PROJECT_NAME} PRIVATE ${box2d_SOURCE_DIR}/include)
+# ALPHAA
+target_link_libraries(${PROJECT_NAME} geode-sdk)
 
 # Set up dependencies, resources, and link Geode.
 setup_geode_mod(${PROJECT_NAME})
