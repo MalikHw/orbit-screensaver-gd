@@ -230,10 +230,12 @@ private:
             startCycle(); return;
         }
 
+        static constexpr float FIXED_STEP = 1.f / 60.f;
+
         m_physAccum += dt;
-        if (m_physAccum > 0.f) {
-            m_world->Step(m_physAccum, 8, 3);
-            m_physAccum = 0.f;
+        while (m_physAccum >= FIXED_STEP) {
+            m_world->Step(FIXED_STEP, 8, 3);
+            m_physAccum -= FIXED_STEP;
         }
 
         for (auto& b : m_balls) {
