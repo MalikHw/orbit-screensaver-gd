@@ -28,11 +28,11 @@ static constexpr float FADE_DURATION = 0.5f;
 // TO FIX TOMORROW
 // 36,     84,   141,   1022,  1330,  1333,  1704,  1751,  3004,  3027,  1594
 // yellow, blue, pink, green, black, red, dash, dash2, spider, teleport, toggle
-static const int   ORB_IDS[11]      = { 36,   84,   141,   1022,  1330,  1333,  1704,  1751,  3004,  3027,  1594  };
+static const int   ORB_IDS[11]       = { 36,     84,    141,   1022, 1330,  1333, 1704,  1751,  3004,   3027,  1594 };
 // full content sizes from device log — used directly as box2d radius or half-extent
-static const float ORB_FULL_SIZE[11] = { 32.3f, 32.5f, 33.4f, 31.76f, 35.6f, 34.5f, 41.f,  41.f,  41.f,  39.4f, 30.8f };
+static const float ORB_FULL_SIZE[11] = { 32.3f, 33.f, 33.4f, 31.76f, 36.f, 34.5f, 41.f,  41.f,  41.f,  39.4f, 30.8f };
 // SimplePlayer content size on device
-static constexpr float PLAYER_FULL_SIZE = 37.f;
+static constexpr float PLAYER_FULL_SIZE = 35.f;
 
 enum class BgMode { Color, Blur };
 
