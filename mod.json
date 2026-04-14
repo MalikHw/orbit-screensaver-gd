@@ -5,7 +5,7 @@
         "mac": "2.2081",
         "android": "2.2081"
     },
-    "version": "v1.0.1-beta",
+    "version": "v1.0.0",
     "id": "malikhw47.orbit-screensaver",
     "name": "ORBIT Screensaver",
     "developer": "MalikHw47",
@@ -84,13 +84,13 @@
         },
         "bg-color": {
             "name": "Background Color & Opacity",
-            "description": "Color and opacity of the screensaver overlay.(transparent possibwe uwu)",
+            "description": "Color and opacity of the screensaver overlay (transparent is possible btw)",
             "type": "rgba",
             "default": "#000000ff"
         },
         "bg-blur": {
             "name": "Blur Background",
-            "description": "Blur the scene behind the screensaver (requires Blur API to be installed and enabled).",
+            "description": "Blur the scene behind the screensaver (requires Blur API to be installed and enabled)",
             "type": "bool",
             "default": false
         },
