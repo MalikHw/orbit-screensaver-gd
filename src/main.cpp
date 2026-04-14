@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
+#include <memory>
 
 using namespace geode::prelude;
 using namespace cocos2d;
@@ -40,7 +41,7 @@ class ScreensaverLayer : public CCLayerColor {
 public:
     static ScreensaverLayer* create() {
         auto* ret = new ScreensaverLayer();
-        if (ret && ret->init()) { ret->autorelease(); ret->setTag(2047); return ret; }
+        if (ret && ret->init()) { ret->autorelease(); ret->setTag(0139); return ret; }
         CC_SAFE_DELETE(ret);
         return nullptr;
     }
@@ -65,9 +66,9 @@ private:
         CCNode* node     = nullptr;
     };
 
-    b2World*          m_world      = nullptr;
-    b2Body*           m_wallBot    = nullptr;
-    std::vector<Ball> m_balls;
+    std::unique_ptr<b2World> m_world;
+    b2Body*                  m_wallBot = nullptr;
+    std::vector<Ball>        m_balls;
 
     int   m_globalTime    = 0;
     int   m_nextSpawn     = 0;
@@ -79,16 +80,16 @@ private:
     float m_physAccum  = 0.f;
     float m_drainDelay = 5.f;
 
-    int     m_numBalls   = 120;
-    float   m_speedMult  = 1.f;
-    int     m_cubeChance = 50;
-    bool    m_noGround   = false;
-    int     m_dropTime   = 2;
-    BgMode  m_bgMode     = BgMode::Color;
-    ccColor4B m_bgColor  = {0, 0, 0, 255};
+    int       m_numBalls   = 120;
+    float     m_speedMult  = 1.f;
+    int       m_cubeChance = 50;
+    bool      m_noGround   = false;
+    int       m_dropTime   = 2;
+    BgMode    m_bgMode     = BgMode::Color;
+    ccColor4B m_bgColor    = {0, 0, 0, 255};
 
-    bool  m_fadeDone   = false;
-    float m_fadeTimer  = 0.f;
+    bool  m_fadeDone  = false;
+    float m_fadeTimer = 0.f;
 
     CCSize m_screen;
 
@@ -155,12 +156,11 @@ private:
             if (b.node) b.node->removeFromParentAndCleanup(true);
         m_balls.clear();
 
-        delete m_world;
-        m_world   = nullptr;
         m_wallBot = nullptr;
+        m_world.reset();
 
         b2Vec2 grav(0.f, 9.8f * m_speedMult * 3.f);
-        m_world = new b2World(grav);
+        m_world = std::make_unique<b2World>(grav);
 
         float W = m_screen.width;
         float H = m_screen.height;
@@ -216,7 +216,10 @@ private:
             if (m_globalTime >= drainFrame) {
                 m_fillingDone = true;
                 m_draining    = true;
-                if (m_wallBot) { m_world->DestroyBody(m_wallBot); m_wallBot = nullptr; }
+                if (m_wallBot) {
+                    m_world->DestroyBody(m_wallBot);
+                    m_wallBot = nullptr;
+                }
             }
         }
 
@@ -249,10 +252,10 @@ private:
     }
 
     void spawnOrb(float W, float) {
-        int   orbIdx  = std::rand() % 11;
-        bool  isBox   = (orbIdx == 10);
-        float size    = ORB_FULL_SIZE[orbIdx]; // full content size from device
-        float half    = size * 0.5f;
+        int   orbIdx = std::rand() % 11;
+        bool  isBox  = (orbIdx == 10);
+        float size   = ORB_FULL_SIZE[orbIdx]; // full content size from device
+        float half   = size * 0.5f;
 
         b2BodyDef bd;
         bd.type = b2_dynamicBody;
@@ -331,8 +334,7 @@ private:
     ~ScreensaverLayer() override {
         if (m_bgMode == BgMode::Blur)
             BlurAPI::removeBlur(this);
-        delete m_world;
-        m_world = nullptr;
+        // m_world cleans up automatically via unique_ptr
     }
 };
 
@@ -343,7 +345,7 @@ static void resetIdle() {
 static void dismissActive() {
     auto* scene = CCDirector::get()->getRunningScene();
     if (!scene) return;
-    if (auto* ss = scene->getChildByTag(2047)) {
+    if (auto* ss = scene->getChildByTag(0139)) {
         static_cast<ScreensaverLayer*>(ss)->dismiss();
     }
 }
