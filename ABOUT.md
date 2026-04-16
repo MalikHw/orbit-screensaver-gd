@@ -1,3 +1,4 @@
+(they thought this is made by AI, so remade from scratch)
 ## <cy>O</cy><cj>R</cj><cp>B</cp><cr>I</cr><cg>T</cg> ScreenSaver
 
 A port of a screensaver i made for windows/android to GD directly based on MindCap's megacollab "ORBIT" (especially the ball pit)
@@ -6,7 +7,7 @@ A port of a screensaver i made for windows/android to GD directly based on MindC
 - Customizable settings (timeout/speed/cube chance/orb count...)
 - Uses your own cube
 - Custom background color/opacity
-- BLUR mode! (suggested mod)
+- BLUR mode! (needs this mod)
 
 <mod:thesillydoggo.blur-api>
 
@@ -14,7 +15,7 @@ A port of a screensaver i made for windows/android to GD directly based on MindC
 
 #### What's not working:
 - Move cursor to disappear (need to wait for Hover API mod to update)
-- iOS (cuz right now the github workflow is a bit broken, so it fails at iOS cuz same file output as the macos one)
+- ~~iOS (cuz right now the github workflow is a bit broken, so it fails at iOS cuz same file output as the macos one)~~ nvm works
 - idk
 
 ### Credits:
