@@ -30,7 +30,8 @@ static const int   ORB_IDS[11]   = { 36, 84, 141, 1022, 1330, 1333, 1704, 1751, 
 static const float ORB_SIZE[11]  = { 32.3f, 33.2f, 33.6f, 31.96f, 36.5f, 34.9f, 41.f, 41.f, 41.f, 39.4f, 30.8f };
 static constexpr float PLAYER_SIZE = 35.f;
 
-enum class BgMode { Color, Blur };
+// bg-type: "color", "image", "blur"
+enum class BgMode { Color, Image, Blur };
 enum class BgFit  { Stretch, Zoom };
 
 class ScreensaverLayer : public CCLayerColor {
@@ -64,11 +65,12 @@ class ScreensaverLayer : public CCLayerColor {
     int   dropEvery = 2;
 
     // bg
-    BgMode    bgMode = BgMode::Color;
-    BgFit     bgFit  = BgFit::Stretch;
-    ccColor4B bgCol  = {0,0,0,255};
+    BgMode    bgMode    = BgMode::Color;
+    BgFit     bgFit     = BgFit::Stretch;
+    ccColor3B bgColor   = {0, 0, 0};   // RGB only, no alpha here
+    GLubyte   bgOpacity = 255;         // standalone opacity (0-255)
 
-    // bg image (optional)
+    // bg image (optional, used when bgMode == Image)
     CCSprite* bgImage = nullptr;
 
     // fade
@@ -90,17 +92,18 @@ class ScreensaverLayer : public CCLayerColor {
 
     // load the bg image from settings and apply fit/opacity
     void setupBgImage() {
-        // clean up old one if any
         if (bgImage) {
             bgImage->removeFromParentAndCleanup(true);
             bgImage = nullptr;
         }
 
+        // only load an image when bg-type is "image"
+        if (bgMode != BgMode::Image) return;
+
         auto* mod = Mod::get();
         auto imgPath = mod->getSettingValue<std::filesystem::path>("bg-image");
         if (imgPath.empty() || !std::filesystem::exists(imgPath)) return;
 
-        // let cocos handle the load - if it fails, nullptr comes back and we bail
         auto* tex = CCTextureCache::get()->addImage(imgPath.string().c_str(), false);
         if (!tex) return;
 
@@ -112,7 +115,7 @@ class ScreensaverLayer : public CCLayerColor {
 
         applyBgImageFit();
 
-        // put it right behind everything else but above the color layer
+        // put it right behind the orbs but above the transparent color layer
         this->addChild(bgImage, -1);
     }
 
@@ -126,18 +129,15 @@ class ScreensaverLayer : public CCLayerColor {
         float scaleY = scr.height / texSize.height;
 
         if (bgFit == BgFit::Stretch) {
-            // just slam it to fill the whole screen, who cares about aspect ratio
             bgImage->setScaleX(scaleX);
             bgImage->setScaleY(scaleY);
         } else {
-            // zoom: scale up until both axes are covered (zoom in, may crop edges)
             float s = std::max(scaleX, scaleY);
             bgImage->setScale(s);
         }
 
-        // opacity comes from the bg-color alpha setting, same as the color overlay
-        // (but we don't tint the image, just dim it)
-        bgImage->setOpacity(bgCol.a);
+        // image uses the standalone opacity setting directly
+        bgImage->setOpacity(bgOpacity);
     }
 
     void spawnBall(float W, float H, bool forcePlayer = false) {
@@ -245,14 +245,31 @@ class ScreensaverLayer : public CCLayerColor {
 
     bool init() override {
         auto* mod = Mod::get();
-        bgCol  = mod->getSettingValue<ccColor4B>("bg-color");
-        bgMode = (mod->getSettingValue<bool>("bg-blur") && BlurAPI::isBlurAPIEnabled())
-                    ? BgMode::Blur : BgMode::Color;
+
+        // read bg-type: "color", "image", "blur"
+        auto bgTypeStr = mod->getSettingValue<std::string>("bg-type");
+        if (bgTypeStr == "blur" && BlurAPI::isBlurAPIEnabled())
+            bgMode = BgMode::Blur;
+        else if (bgTypeStr == "image")
+            bgMode = BgMode::Image;
+        else
+            bgMode = BgMode::Color;
+
+        // color setting is RGB only (no alpha in the picker)
+        auto bgColorFull = mod->getSettingValue<ccColor4B>("bg-color");
+        bgColor   = {bgColorFull.r, bgColorFull.g, bgColorFull.b};
+
+        // standalone opacity slider (0-255)
+        bgOpacity = (GLubyte)mod->getSettingValue<int64_t>("bg-opacity");
 
         auto fitStr = mod->getSettingValue<std::string>("bg-fit");
         bgFit = (fitStr == "zoom") ? BgFit::Zoom : BgFit::Stretch;
 
-        if (!CCLayerColor::initWithColor({bgCol.r, bgCol.g, bgCol.b, 0})) return false;
+        // when bg-type is Image we want the CCLayerColor fully transparent
+        // so it doesn't paint a black rect on top of the image
+        GLubyte initColorAlpha = (bgMode == BgMode::Color) ? 0 : 0;
+        if (!CCLayerColor::initWithColor({bgColor.r, bgColor.g, bgColor.b, initColorAlpha}))
+            return false;
 
         scr = CCDirector::get()->getWinSize();
         this->setContentSize(scr);
@@ -260,7 +277,7 @@ class ScreensaverLayer : public CCLayerColor {
 
         if (bgMode == BgMode::Blur) BlurAPI::addBlur(this);
 
-        // load bg image after layout is set up
+        // load bg image (only when bgMode == Image)
         setupBgImage();
 
         this->setTouchEnabled(true);
@@ -284,12 +301,18 @@ class ScreensaverLayer : public CCLayerColor {
             fadeT += dt;
             float t = std::min(fadeT / FADETIME, 1.f);
             if (t >= 1.f) fadeOk = true;
-            GLubyte a = (bgMode == BgMode::Blur) ? 180 : bgCol.a;
-            this->setOpacity((GLubyte)(a * t));
 
-            // fade the bg image in too, matching the color overlay alpha
-            if (bgImage) {
-                bgImage->setOpacity((GLubyte)(bgCol.a * t));
+            if (bgMode == BgMode::Blur) {
+                // blur layer fades in with a fixed dim overlay
+                this->setOpacity((GLubyte)(180 * t));
+            } else if (bgMode == BgMode::Color) {
+                // color overlay fades in to the user-chosen opacity
+                this->setOpacity((GLubyte)(bgOpacity * t));
+            } else {
+                // Image mode: color layer stays at 0, image fades in
+                this->setOpacity(0);
+                if (bgImage)
+                    bgImage->setOpacity((GLubyte)(bgOpacity * t));
             }
             return;
         }
