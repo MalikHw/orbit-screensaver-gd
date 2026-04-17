@@ -88,36 +88,36 @@
             "type": "title",
             "name": "Background"
         },
-        "bg-color": {
-            "name": "Background Color & Opacity",
-            "description": "Color and opacity of the screensaver overlay. (transparent possibwe uwu)",
-            "type": "rgba",
-            "default": "#000000ff"
+        "bg-type": {
+            "name": "Background Type",
+            "description": "background type (blur requires BlurAPI)",
+            "type": "string",
+            "default": "color",
+            "one-of": ["color", "image", "blur"]
         },
-        "bg-blur": {
-            "name": "Blur Background",
-            "description": "Blur the scene behind the screensaver (requires Blur API to be installed and enabled).",
-            "type": "bool",
-            "default": false
+        "bg-color": {
+            "name": "Background Color",
+            "description": "Color used for the background overlay (RGB, no alpha here)",
+            "type": "color",
+            "default": [0, 0, 0, 255]
+        },
+        "bg-opacity": {
+            "name": "Background Opacity",
+            "description": "Opacity of the background (0 = fully transparent, 255 = fully opaque)",
+            "type": "int",
+            "default": 200,
+            "min": 0,
+            "max": 255
         },
         "bg-image": {
             "name": "Background Image",
-            "description": "Optional image to use as the screensaver background. Supports PNG/JPG. GIF support depends on a GIF mod being installed. Opacity is controlled by the alpha of Background Color above.",
+            "description": "path to an image file. Only used when Background Type is set to image",
             "type": "file",
-            "default": "",
-            "control": {
-                "dialog": "open",
-                "filters": [
-                    {
-                        "files": ["*.png", "*.jpg", "*.jpeg", "*.gif"],
-                        "description": "Image files"
-                    }
-                ]
-            }
+            "default": ""
         },
         "bg-fit": {
-            "name": "Background Image Fit",
-            "description": "How the background image is scaled to fill the screen. Stretch = fill exactly (ignores aspect ratio). Zoom = scale up to cover screen while keeping aspect ratio (may crop edges).",
+            "name": "Image Fit",
+            "description": "How the image fills the screen. stretch = fills. zoom = maintains aspect ratio, crops edges",
             "type": "string",
             "default": "stretch",
             "one-of": ["stretch", "zoom"]
