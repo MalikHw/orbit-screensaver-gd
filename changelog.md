@@ -1,4 +1,8 @@
-### v1.1.0
+### v1.1.2
+- the SMALLEST bugfix lol
+---
+
+### v1.1.1
 - small bug fix conserning image as background
 ---
 
