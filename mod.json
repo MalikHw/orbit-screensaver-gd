@@ -115,5 +115,6 @@
         "thesillydoggo.blur-api": {
             "version": ">=v1.0.0",
             "required": false
+        }
     }
 }
