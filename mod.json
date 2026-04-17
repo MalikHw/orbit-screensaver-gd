@@ -98,8 +98,8 @@
         "bg-color": {
             "name": "Background Color",
             "description": "Color used for the background overlay (RGB, no alpha here)",
-            "type": "color",
-            "default": [0, 0, 0, 255]
+            "type": "rgb",
+            "default": [0, 0, 0]
         },
         "bg-opacity": {
             "name": "Background Opacity",
