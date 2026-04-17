@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
+#include <filesystem>
 
 using namespace geode::prelude;
 using namespace cocos2d;
@@ -30,6 +31,7 @@ static const float ORB_SIZE[11]  = { 32.3f, 33.2f, 33.6f, 31.96f, 36.5f, 34.9f, 
 static constexpr float PLAYER_SIZE = 35.f;
 
 enum class BgMode { Color, Blur };
+enum class BgFit  { Stretch, Zoom };
 
 class ScreensaverLayer : public CCLayerColor {
     struct PhysBall {
@@ -63,7 +65,11 @@ class ScreensaverLayer : public CCLayerColor {
 
     // bg
     BgMode    bgMode = BgMode::Color;
+    BgFit     bgFit  = BgFit::Stretch;
     ccColor4B bgCol  = {0,0,0,255};
+
+    // bg image (optional)
+    CCSprite* bgImage = nullptr;
 
     // fade
     float fadeT  = 0.f;
@@ -80,6 +86,58 @@ class ScreensaverLayer : public CCLayerColor {
         b2FixtureDef fd; fd.shape = &e; fd.restitution = 0.5f; fd.friction = 0.7f;
         b->CreateFixture(&fd);
         return b;
+    }
+
+    // load the bg image from settings and apply fit/opacity
+    void setupBgImage() {
+        // clean up old one if any
+        if (bgImage) {
+            bgImage->removeFromParentAndCleanup(true);
+            bgImage = nullptr;
+        }
+
+        auto* mod = Mod::get();
+        auto imgPath = mod->getSettingValue<std::filesystem::path>("bg-image");
+        if (imgPath.empty() || !std::filesystem::exists(imgPath)) return;
+
+        // let cocos handle the load - if it fails, nullptr comes back and we bail
+        auto* tex = CCTextureCache::get()->addImage(imgPath.string().c_str(), false);
+        if (!tex) return;
+
+        bgImage = CCSprite::createWithTexture(tex);
+        if (!bgImage) return;
+
+        bgImage->setAnchorPoint({0.5f, 0.5f});
+        bgImage->setPosition({scr.width * 0.5f, scr.height * 0.5f});
+
+        applyBgImageFit();
+
+        // put it right behind everything else but above the color layer
+        this->addChild(bgImage, -1);
+    }
+
+    void applyBgImageFit() {
+        if (!bgImage) return;
+
+        auto texSize = bgImage->getTextureRect().size;
+        if (texSize.width <= 0.f || texSize.height <= 0.f) return;
+
+        float scaleX = scr.width  / texSize.width;
+        float scaleY = scr.height / texSize.height;
+
+        if (bgFit == BgFit::Stretch) {
+            // just slam it to fill the whole screen, who cares about aspect ratio
+            bgImage->setScaleX(scaleX);
+            bgImage->setScaleY(scaleY);
+        } else {
+            // zoom: scale up until both axes are covered (zoom in, may crop edges)
+            float s = std::max(scaleX, scaleY);
+            bgImage->setScale(s);
+        }
+
+        // opacity comes from the bg-color alpha setting, same as the color overlay
+        // (but we don't tint the image, just dim it)
+        bgImage->setOpacity(bgCol.a);
     }
 
     void spawnBall(float W, float H, bool forcePlayer = false) {
@@ -187,9 +245,12 @@ class ScreensaverLayer : public CCLayerColor {
 
     bool init() override {
         auto* mod = Mod::get();
-        bgCol = mod->getSettingValue<ccColor4B>("bg-color");
+        bgCol  = mod->getSettingValue<ccColor4B>("bg-color");
         bgMode = (mod->getSettingValue<bool>("bg-blur") && BlurAPI::isBlurAPIEnabled())
                     ? BgMode::Blur : BgMode::Color;
+
+        auto fitStr = mod->getSettingValue<std::string>("bg-fit");
+        bgFit = (fitStr == "zoom") ? BgFit::Zoom : BgFit::Stretch;
 
         if (!CCLayerColor::initWithColor({bgCol.r, bgCol.g, bgCol.b, 0})) return false;
 
@@ -198,6 +259,9 @@ class ScreensaverLayer : public CCLayerColor {
         this->setPosition(CCPointZero);
 
         if (bgMode == BgMode::Blur) BlurAPI::addBlur(this);
+
+        // load bg image after layout is set up
+        setupBgImage();
 
         this->setTouchEnabled(true);
         this->setTouchMode(kCCTouchesOneByOne);
@@ -222,6 +286,11 @@ class ScreensaverLayer : public CCLayerColor {
             if (t >= 1.f) fadeOk = true;
             GLubyte a = (bgMode == BgMode::Blur) ? 180 : bgCol.a;
             this->setOpacity((GLubyte)(a * t));
+
+            // fade the bg image in too, matching the color overlay alpha
+            if (bgImage) {
+                bgImage->setOpacity((GLubyte)(bgCol.a * t));
+            }
             return;
         }
 

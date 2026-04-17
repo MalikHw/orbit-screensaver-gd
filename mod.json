@@ -6,11 +6,11 @@
         "android": "2.2081",
         "ios": "2.2081"
     },
-    "version": "v1.0.3",
+    "version": "v1.1.0",
     "id": "malikhw47.orbit-screensaver",
     "name": "ORBIT Screensaver",
     "developer": "MalikHw47",
-    "description": "A screensaver for GD.",
+    "description": "A orbs ballpit screensaver for GD.",
     "tags": [ "offline", "customization", "interface", "universal"],
     "repository": "https://github.com/MalikHw/orbit-screensaver-gd",
     "links": {
@@ -90,7 +90,7 @@
         },
         "bg-color": {
             "name": "Background Color & Opacity",
-            "description": "Color and opacity of the screensaver overlay.(transparent possibwe uwu)",
+            "description": "Color and opacity of the screensaver overlay. (transparent possibwe uwu)",
             "type": "rgba",
             "default": "#000000ff"
         },
@@ -99,6 +99,28 @@
             "description": "Blur the scene behind the screensaver (requires Blur API to be installed and enabled).",
             "type": "bool",
             "default": false
+        },
+        "bg-image": {
+            "name": "Background Image",
+            "description": "Optional image to use as the screensaver background. Supports PNG/JPG. GIF support depends on a GIF mod being installed. Opacity is controlled by the alpha of Background Color above.",
+            "type": "file",
+            "default": "",
+            "control": {
+                "dialog": "open",
+                "filters": [
+                    {
+                        "files": ["*.png", "*.jpg", "*.jpeg", "*.gif"],
+                        "description": "Image files"
+                    }
+                ]
+            }
+        },
+        "bg-fit": {
+            "name": "Background Image Fit",
+            "description": "How the background image is scaled to fill the screen. Stretch = fill exactly (ignores aspect ratio). Zoom = scale up to cover screen while keeping aspect ratio (may crop edges).",
+            "type": "string",
+            "default": "stretch",
+            "one-of": ["stretch", "zoom"]
         },
         "misc-title": {
             "type": "title",
