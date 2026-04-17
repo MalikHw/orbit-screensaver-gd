@@ -12,10 +12,14 @@
     "developer": "MalikHw47",
     "description": "A screensaver for GD.",
     "tags": [ "offline", "customization", "interface", "universal"],
+    "repository": "https://github.com/MalikHw/orbit-screensaver-gd",
     "links": {
-        "source": "https://github.com/MalikHw/orbit-screensaver-gd",
+        "homepage": "https://malikhw.github.io/orbit-screensaver",
         "community": "https://discord.gg/G9bZ92eg2n"
     },
+    "issues": {
+        "url": "https://github.com/MalikHw/orbit-screensaver-gd/issues",
+        "info": "just say in <cl>the github issues</c>, feature requests allowed</c>"
     "settings": {
         "physics-title": {
             "type": "title",
@@ -106,11 +110,9 @@
             "default": false
         }
     },
-    "suggested": [
-        {
-            "id": "thesillydoggo.blur-api",
-            "importance": "recommended",
-            "reason": "Enables blur background option"
-        }
-    ]
+    "dependencies": {
+        "thesillydoggo.blur-api": {
+            "version": ">=v1.0.0",
+            "required": false
+    }
 }
