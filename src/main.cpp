@@ -256,7 +256,7 @@ class ScreensaverLayer : public CCLayerColor {
             bgMode = BgMode::Color;
 
         // color setting is RGB only (no alpha in the picker)
-        auto bgColorFull = mod->getSettingValue<ccColor4B>("bg-color");
+        bgColor = mod->getSettingValue<ccColor3B>("bg-color");
         bgColor   = {bgColorFull.r, bgColorFull.g, bgColorFull.b};
 
         // standalone opacity slider (0-255)
