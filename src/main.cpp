@@ -27,7 +27,7 @@ static constexpr float FADETIME = 0.5f;
 // yellow, blue, pink, green, black, red, dash, dash2, spider, teleport, toggle
 static const int   ORB_IDS[11]   = { 36, 84, 141, 1022, 1330, 1333, 1704, 1751, 3004, 3027, 1594 };
 static const float ORB_SIZE[11]  = { 32.3f, 33.2f, 33.6f, 31.96f, 36.5f, 34.9f, 41.f, 41.f, 41.f, 39.4f, 30.8f };
-static constexpr float PSIZE = 35.f;
+static constexpr float PLAYER_SIZE = 35.f;
 
 enum class BgMode { Color, Blur };
 
@@ -89,7 +89,7 @@ class ScreensaverLayer : public CCLayerColor {
         bool isBox    = false;
 
         if (isPlayer) {
-            half = PSIZE * 0.5f;
+            half = PLAYER_SIZE * 0.5f;
             isBox = true;
         } else {
             orbIdx = std::rand() % 11;
