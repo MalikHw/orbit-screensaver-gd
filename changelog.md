@@ -1,3 +1,8 @@
+### v1.2.0
+- FULL REWRITE with help from a friend (he doesnt want to get credited lmao)
+- doesnt now appear in editor
+
+
 ### v1.1.2
 - the SMALLEST bugfix lol
 ---
