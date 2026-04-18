@@ -94,7 +94,7 @@ class ScreensaverStuff : public CCLayerColor {
         if(!bgImg) return;
         
         bgImg->setAnchorPoint({0.5f, 0.5f});
-        bgImg->setPosition(winSize.width/2, winSize.height/2);
+        bgImg->setPosition(CCPoint(winSize.width/2, winSize.height/2));
         
         fitBgImg();
         this->addChild(bgImg, -1);
@@ -406,7 +406,7 @@ public:
     void keyBackClicked() override {
         kill();
     }
-    q
+    
     void scrollWheel(float, float) override {
         kill();
     }
@@ -421,10 +421,10 @@ public:
 const int ScreensaverStuff::orbIds[11] = {36, 84, 141, 1022, 1330, 1333, 1704, 1751, 3004, 3027, 1594};
 const float ScreensaverStuff::orbSizes[11] = {32.3f, 33.2f, 33.6f, 31.96f, 36.5f, 34.9f, 41.f, 41.f, 41.f, 39.4f, 30.8f};
 
-class $modify(CCScene) {
+class $modify(MySceneHook, CCScene) {
     bool init() {
         if(!CCScene::init()) return false;
-        this->schedule(schedule_selector($modify(CCScene)::checkIdle), 0.f);
+        this->schedule(schedule_selector(OrbitScrsvrScene::checkIdle), 0.f);
         return true;
     }
     
