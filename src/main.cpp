@@ -1,284 +1,274 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/CCScene.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/PauseLayer.hpp>
+#include <Geode/modify/LevelEditorLayer.hpp>
 #include <Geode/modify/CCTouchDispatcher.hpp>
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
 
 #include "BlurAPI.hpp"
 #include <box2d/box2d.h>
 
-#include <vector>
-#include <cmath>
-#include <cstdlib>
-#include <ctime>
-#include <filesystem>
-
 using namespace geode::prelude;
 using namespace cocos2d;
 
-static bool  g_inLevel  = false;
-static float g_idle     = 0.f;
-static bool  g_active   = false;
+static float idleTimer = 0.f;
+static bool ssActive = false;
+static bool pauseOpen = false;
 
-static constexpr float PPM = 40.f;
-static constexpr float FADETIME = 0.5f;
+struct PhysItem {
+    b2Body* phys;
+    CCNode* vis;
+    float radius;
+    int itemType;
+    bool isPlayerCube;
+};
 
-// fiksed
-// 36,     84,   141,   1022,  1330,  1333,  1704,  1751,  3004,  3027,  1594
-// yellow, blue, pink, green, black, red, dash, dash2, spider, teleport, toggle
-static const int   ORB_IDS[11]   = { 36, 84, 141, 1022, 1330, 1333, 1704, 1751, 3004, 3027, 1594 };
-static const float ORB_SIZE[11]  = { 32.3f, 33.2f, 33.6f, 31.96f, 36.5f, 34.9f, 41.f, 41.f, 41.f, 39.4f, 30.8f };
-static constexpr float PLAYER_SIZE = 35.f;
-
-// bg-type: "color", "image", "blur"
-enum class BgMode { Color, Image, Blur };
-enum class BgFit  { Stretch, Zoom };
-
-class ScreensaverLayer : public CCLayerColor {
-    struct PhysBall {
-        b2Body* body = nullptr;
-        CCNode* node = nullptr;
-        float   r    = 0.f;
-        int     idx  = 0;
-        bool    cube = false;
-    };
-
-    // physics
-    b2World* world  = nullptr;
-    b2Body*  ground = nullptr;
-    std::vector<PhysBall> balls;
-
-    // cycle state
-    int   tick       = 0;
-    int   spawned    = 0;
-    bool  gotPlayer  = false;
-    bool  filled     = false;
-    bool  draining   = false;
-    float accumulator = 0.f;
-    float drainWait  = 3.f;
-
-    // settings (read each cycle)
-    int   numBalls  = 120;
-    float spd       = 1.f;
-    int   cubePct   = 50;
-    bool  noFloor   = false;
-    int   dropEvery = 2;
-
-    // bg
-    BgMode    bgMode    = BgMode::Color;
-    BgFit     bgFit     = BgFit::Stretch;
-    ccColor3B bgColor   = {0, 0, 0};   // RGB only, no alpha here
-    GLubyte   bgOpacity = 255;         // standalone opacity (0-255)
-
-    // bg image (optional, used when bgMode == Image)
-    CCSprite* bgImage = nullptr;
-
-    // fade
-    float fadeT  = 0.f;
-    bool  fadeOk = false;
-
-    bool  dead = false;
-    CCSize scr;
-
-    b2Body* makeWall(float x1, float y1, float x2, float y2) {
-        b2BodyDef bd; bd.type = b2_staticBody;
-        auto* b = world->CreateBody(&bd);
-        b2EdgeShape e;
-        e.SetTwoSided({x1/PPM, y1/PPM}, {x2/PPM, y2/PPM});
-        b2FixtureDef fd; fd.shape = &e; fd.restitution = 0.5f; fd.friction = 0.7f;
+class ScreensaverStuff : public CCLayerColor {
+    b2World* physWorld;
+    b2Body* floorBody;
+    std::vector<PhysItem> items;
+    
+    float elapsedTime;
+    int totalSpawned;
+    bool hasSpawnedPlayer;
+    bool isDraining;
+    bool isFilledUp;
+    float dt_accum;
+    float waitTime;
+    float nextSpawnAt;
+    
+    int maxItems;
+    float simSpeed;
+    int cubeChance;
+    bool noGround;
+    int spawnInterval;
+    
+    std::string bgType;
+    std::string bgFitMode;
+    ccColor3B bgCol;
+    int bgAlpha;
+    
+    CCSprite* bgImg;
+    
+    float fadeTime;
+    bool fadeDone;
+    bool killed;
+    CCSize winSize;
+    
+    static const int orbIds[11];
+    static const float orbSizes[11];
+    
+    void makeEdge(float x1, float y1, float x2, float y2, b2Body** out) {
+        b2BodyDef bd;
+        bd.type = b2_staticBody;
+        auto b = physWorld->CreateBody(&bd);
+        
+        b2EdgeShape edge;
+        edge.SetTwoSided({x1/40.f, y1/40.f}, {x2/40.f, y2/40.f});
+        
+        b2FixtureDef fd;
+        fd.shape = &edge;
+        fd.restitution = 0.5f;
+        fd.friction = 0.7f;
         b->CreateFixture(&fd);
-        return b;
+        
+        if(out) *out = b;
     }
-
-    // load the bg image from settings and apply fit/opacity
-    void setupBgImage() {
-        if (bgImage) {
-            bgImage->removeFromParentAndCleanup(true);
-            bgImage = nullptr;
+    
+    void loadBgImg() {
+        if(bgImg) {
+            bgImg->removeFromParentAndCleanup(true);
+            bgImg = nullptr;
         }
-
-        // only load an image when bg-type is "image"
-        if (bgMode != BgMode::Image) return;
-
-        auto* mod = Mod::get();
-        auto imgPath = mod->getSettingValue<std::filesystem::path>("bg-image");
-        if (imgPath.empty() || !std::filesystem::exists(imgPath)) return;
-
-        auto* tex = CCTextureCache::get()->addImage(imgPath.string().c_str(), false);
-        if (!tex) return;
-
-        bgImage = CCSprite::createWithTexture(tex);
-        if (!bgImage) return;
-
-        bgImage->setAnchorPoint({0.5f, 0.5f});
-        bgImage->setPosition({scr.width * 0.5f, scr.height * 0.5f});
-
-        applyBgImageFit();
-
-        // put it right behind the orbs but above the transparent color layer
-        this->addChild(bgImage, -1);
+        
+        if(bgType != "image") return;
+        
+        auto imgPath = Mod::get()->getSettingValue<std::filesystem::path>("bg-image");
+        if(imgPath.empty() || !std::filesystem::exists(imgPath)) return;
+        
+        auto tex = CCTextureCache::get()->addImage(imgPath.string().c_str(), false);
+        if(!tex) return;
+        
+        bgImg = CCSprite::createWithTexture(tex);
+        if(!bgImg) return;
+        
+        bgImg->setAnchorPoint({0.5f, 0.5f});
+        bgImg->setPosition(winSize.width/2, winSize.height/2);
+        
+        fitBgImg();
+        this->addChild(bgImg, -1);
     }
-
-    void applyBgImageFit() {
-        if (!bgImage) return;
-
-        auto texSize = bgImage->getTextureRect().size;
-        if (texSize.width <= 0.f || texSize.height <= 0.f) return;
-
-        float scaleX = scr.width  / texSize.width;
-        float scaleY = scr.height / texSize.height;
-
-        if (bgFit == BgFit::Stretch) {
-            bgImage->setScaleX(scaleX);
-            bgImage->setScaleY(scaleY);
+    
+    void fitBgImg() {
+        if(!bgImg) return;
+        
+        auto texSz = bgImg->getTextureRect().size;
+        if(texSz.width <= 0 || texSz.height <= 0) return;
+        
+        float scaleX = winSize.width / texSz.width;
+        float scaleY = winSize.height / texSz.height;
+        
+        if(bgFitMode == "stretch") {
+            bgImg->setScaleX(scaleX);
+            bgImg->setScaleY(scaleY);
         } else {
             float s = std::max(scaleX, scaleY);
-            bgImage->setScale(s);
+            bgImg->setScale(s);
         }
-
-        // image uses the standalone opacity setting directly
-        bgImage->setOpacity(bgOpacity);
+        
+        bgImg->setOpacity(bgAlpha);
     }
-
-    void spawnBall(float W, float H, bool forcePlayer = false) {
-        float half;
-        int orbIdx = -1;
+    
+    void dropItem(bool forcePlayer = false) {
+        float r;
+        int orbType = -1;
         bool isPlayer = forcePlayer;
-        bool isBox    = false;
-
-        if (isPlayer) {
-            half = PLAYER_SIZE * 0.5f;
+        bool isBox = false;
+        
+        if(isPlayer) {
+            r = 35.f / 2.f;
             isBox = true;
         } else {
-            orbIdx = std::rand() % 11;
-            isBox  = (orbIdx == 10);
-            half   = ORB_SIZE[orbIdx] * 0.5f;
+            orbType = std::rand() % 11;
+            isBox = (orbType == 10);
+            r = orbSizes[orbType] / 2.f;
         }
-
+        
         b2BodyDef bd;
         bd.type = b2_dynamicBody;
-        bd.angle = (std::rand() % 360) * (float)M_PI / 180.f;
-
-        if (isPlayer) {
+        bd.angle = (std::rand() % 360) * M_PI / 180.f;
+        
+        if(isPlayer) {
             bd.position.Set(
-                (float)(std::rand() % std::max(1,(int)W)) / PPM,
-                -(200.f + std::rand() % 800) / PPM
+                (float)(std::rand() % (int)std::max(1.f, winSize.width)) / 40.f,
+                -(200.f + std::rand() % 800) / 40.f
             );
         } else {
             bd.position.Set(
-                (W * 0.1f + (std::rand() % std::max(1, (int)(W*0.8f)))) / PPM,
-                -250.f / PPM
+                (winSize.width*0.1f + (std::rand() % (int)std::max(1.f, winSize.width*0.8f))) / 40.f,
+                -250.f / 40.f
             );
         }
-
-        auto* body = world->CreateBody(&bd);
-
-        b2FixtureDef   fd;
-        b2CircleShape  cs;
-        b2PolygonShape ps;
-        fd.density = 1.f; fd.restitution = 0.5f; fd.friction = isPlayer ? 0.7f : 1.f;
-
-        if (isBox) { ps.SetAsBox(half/PPM, half/PPM); fd.shape = &ps; }
-        else       { cs.m_radius = half/PPM;           fd.shape = &cs; }
+        
+        auto body = physWorld->CreateBody(&bd);
+        
+        b2FixtureDef fd;
+        b2CircleShape circ;
+        b2PolygonShape poly;
+        
+        fd.density = 1.f;
+        fd.restitution = 0.5f;
+        fd.friction = isPlayer ? 0.7f : 1.f;
+        
+        if(isBox) {
+            poly.SetAsBox(r/40.f, r/40.f);
+            fd.shape = &poly;
+        } else {
+            circ.m_radius = r/40.f;
+            fd.shape = &circ;
+        }
+        
         body->CreateFixture(&fd);
-
-        if (!isPlayer)
-            body->ApplyLinearImpulse({(10 - std::rand()%21) * 0.05f, 0.f}, body->GetWorldCenter(), true);
-
-        CCNode* node = nullptr;
-        if (isPlayer) {
-            auto* gm = GameManager::get();
-            auto* sp = SimplePlayer::create(gm->getPlayerFrame());
-            if (sp) {
-                sp->setColors(gm->colorForIdx(gm->getPlayerColor()), gm->colorForIdx(gm->getPlayerColor2()));
-                if (gm->getPlayerGlow())
+        
+        if(!isPlayer) {
+            body->ApplyLinearImpulse({(10 - std::rand()%21)*0.05f, 0.f}, body->GetWorldCenter(), true);
+        }
+        
+        CCNode* visNode = nullptr;
+        
+        if(isPlayer) {
+            auto gm = GameManager::get();
+            auto sp = SimplePlayer::create(gm->getPlayerFrame());
+            if(sp) {
+                sp->setColors(gm->colorForIdx(gm->getPlayerColor()), 
+                             gm->colorForIdx(gm->getPlayerColor2()));
+                if(gm->getPlayerGlow())
                     sp->setGlowOutline(gm->colorForIdx(gm->getPlayerGlowColor()));
                 sp->setScale(1.f);
-                sp->setPosition({-9999.f, -9999.f});
+                sp->setPosition(-9999, -9999);
                 this->addChild(sp, 3);
-                node = sp;
+                visNode = sp;
             }
         } else {
-            auto* obj = GameObject::createWithKey(ORB_IDS[orbIdx]);
-            if (obj) {
+            auto obj = GameObject::createWithKey(orbIds[orbType]);
+            if(obj) {
                 obj->setScale(1.f);
-                obj->setPosition({-9999.f, -9999.f});
+                obj->setPosition(-9999, -9999);
                 this->addChild(obj, 2);
-                node = obj;
+                visNode = obj;
             }
         }
-
-        balls.push_back({body, node, half, orbIdx, isPlayer});
+        
+        items.push_back({body, visNode, r, orbType, isPlayer});
     }
-
-    void startCycle() {
-        auto* mod = Mod::get();
-        numBalls  = (int)mod->getSettingValue<int64_t>("orb-count");
-        cubePct   = (int)mod->getSettingValue<int64_t>("cube-chance");
-        noFloor   = mod->getSettingValue<bool>("no-ground");
-        spd       = (float)mod->getSettingValue<int64_t>("orb-speed") / 10.f;
-        dropEvery = std::max(1, (int)(20.f / spd));
-        if (numBalls < 1) numBalls = 1;
-
-        tick      = 0;
-        spawned   = 0;
-        gotPlayer = false;
-        filled    = false;
-        draining  = false;
-        accumulator = 0.f;
-        drainWait = 5.f + (std::rand() % 1001) / 1000.f;
-
-        for (auto& b : balls)
-            if (b.node) b.node->removeFromParentAndCleanup(true);
-        balls.clear();
-
-        delete world; world = nullptr; ground = nullptr;
-
-        world = new b2World({0.f, 9.8f * spd * 3.f});
-
-        float W = scr.width, H = scr.height;
-        makeWall(0,0, 0,H);
-        makeWall(W,0, W,H);
-        if (!noFloor)
-            ground = makeWall(0,H, W,H);
+    
+    void reset() {
+        maxItems = (int)Mod::get()->getSettingValue<int64_t>("orb-count");
+        cubeChance = (int)Mod::get()->getSettingValue<int64_t>("cube-chance");
+        noGround = Mod::get()->getSettingValue<bool>("no-ground");
+        simSpeed = (float)Mod::get()->getSettingValue<int64_t>("orb-speed") / 10.f;
+        spawnInterval = std::max(1, (int)(20.f/simSpeed));
+        if(maxItems < 1) maxItems = 1;
+        
+        elapsedTime = 0.f;
+        totalSpawned = 0;
+        hasSpawnedPlayer = false;
+        isFilledUp = false;
+        isDraining = false;
+        dt_accum = 0.f;
+        waitTime = 5.f + (std::rand()%1001)/1000.f;
+        nextSpawnAt = 0.f;
+        
+        for(auto& item : items) {
+            if(item.vis) item.vis->removeFromParentAndCleanup(true);
+        }
+        items.clear();
+        
+        delete physWorld;
+        physWorld = nullptr;
+        floorBody = nullptr;
+        
+        physWorld = new b2World({0.f, 9.8f*simSpeed*3.f});
+        
+        float W = winSize.width;
+        float H = winSize.height;
+        
+        makeEdge(0,0, 0,H, nullptr);
+        makeEdge(W,0, W,H, nullptr);
+        
+        if(!noGround)
+            makeEdge(0,H, W,H, &floorBody);
     }
-
+    
     bool init() override {
-        auto* mod = Mod::get();
-
-        // read bg-type: "color", "image", "blur"
-        auto bgTypeStr = mod->getSettingValue<std::string>("bg-type");
-        if (bgTypeStr == "blur" && BlurAPI::isBlurAPIEnabled())
-            bgMode = BgMode::Blur;
-        else if (bgTypeStr == "image")
-            bgMode = BgMode::Image;
-        else
-            bgMode = BgMode::Color;
-
-        // color setting is RGB only (no alpha in the picker)
-        bgColor = mod->getSettingValue<ccColor3B>("bg-color");
-
-        // standalone opacity slider (0-255)
-        bgOpacity = (GLubyte)mod->getSettingValue<int64_t>("bg-opacity");
-
-        auto fitStr = mod->getSettingValue<std::string>("bg-fit");
-        bgFit = (fitStr == "zoom") ? BgFit::Zoom : BgFit::Stretch;
-
-        // when bg-type is Image we want the CCLayerColor fully transparent
-        // so it doesn't paint a black rect on top of the image
-        GLubyte initColorAlpha = (bgMode == BgMode::Color) ? 0 : 0;
-        if (!CCLayerColor::initWithColor({bgColor.r, bgColor.g, bgColor.b, initColorAlpha}))
+        bgType = Mod::get()->getSettingValue<std::string>("bg-type");
+        
+        if(bgType == "blur" && BlurAPI::isBlurAPIEnabled()) {
+            // blur mode
+        } else if(bgType == "image") {
+            // image mode
+        } else {
+            bgType = "color";
+        }
+        
+        bgCol = Mod::get()->getSettingValue<ccColor3B>("bg-color");
+        bgAlpha = (int)Mod::get()->getSettingValue<int64_t>("bg-opacity");
+        bgFitMode = Mod::get()->getSettingValue<std::string>("bg-fit");
+        
+        GLubyte initAlpha = (bgType == "color") ? 0 : 0;
+        if(!CCLayerColor::initWithColor({bgCol.r, bgCol.g, bgCol.b, initAlpha}))
             return false;
-
-        scr = CCDirector::get()->getWinSize();
-        this->setContentSize(scr);
+        
+        winSize = CCDirector::get()->getWinSize();
+        this->setContentSize(winSize);
         this->setPosition(CCPointZero);
-
-        if (bgMode == BgMode::Blur) BlurAPI::addBlur(this);
-
-        // load bg image (only when bgMode == Image)
-        setupBgImage();
-
+        
+        if(bgType == "blur")
+            BlurAPI::addBlur(this);
+        
+        loadBgImg();
+        
         this->setTouchEnabled(true);
         this->setTouchMode(kCCTouchesOneByOne);
         this->setTouchPriority(-9999);
@@ -287,170 +277,250 @@ class ScreensaverLayer : public CCLayerColor {
 #ifdef GEODE_IS_DESKTOP
         this->setMouseEnabled(true);
 #endif
+        
         this->scheduleUpdate();
         std::srand((unsigned)std::time(nullptr));
-        startCycle();
+        
+        fadeTime = 0.f;
+        fadeDone = false;
+        killed = false;
+        
+        reset();
         return true;
     }
-
+    
     void update(float dt) override {
-        if (dead) return;
-
-        if (!fadeOk) {
-            fadeT += dt;
-            float t = std::min(fadeT / FADETIME, 1.f);
-            if (t >= 1.f) fadeOk = true;
-
-            if (bgMode == BgMode::Blur) {
-                // blur layer fades in with a fixed dim overlay
-                this->setOpacity((GLubyte)(180 * t));
-            } else if (bgMode == BgMode::Color) {
-                // color overlay fades in to the user-chosen opacity
-                this->setOpacity((GLubyte)(bgOpacity * t));
+        if(killed) return;
+        
+        if(!fadeDone) {
+            fadeTime += dt;
+            float t = std::min(fadeTime/0.5f, 1.f);
+            if(t >= 1.f) fadeDone = true;
+            
+            if(bgType == "blur") {
+                this->setOpacity((GLubyte)(180*t));
+            } else if(bgType == "color") {
+                this->setOpacity((GLubyte)(bgAlpha*t));
             } else {
-                // Image mode: color layer stays at 0, image fades in
                 this->setOpacity(0);
-                if (bgImage)
-                    bgImage->setOpacity((GLubyte)(bgOpacity * t));
+                if(bgImg)
+                    bgImg->setOpacity((GLubyte)(bgAlpha*t));
             }
             return;
         }
-
-        float W = scr.width, H = scr.height;
-        tick++;
-
-        while (spawned < numBalls && tick >= dropEvery * spawned) {
-            spawnBall(W, H);
-            spawned++;
+        
+        float W = winSize.width;
+        float H = winSize.height;
+        
+        elapsedTime += dt;
+        
+        // spawn items based on time intervals
+        float spawnDelay = (float)spawnInterval / 60.f; // convert to seconds
+        while(totalSpawned < maxItems && elapsedTime >= nextSpawnAt) {
+            dropItem(false);
+            totalSpawned++;
+            nextSpawnAt = elapsedTime + spawnDelay;
         }
-
-        if (!gotPlayer && spawned >= numBalls / 2) {
-            gotPlayer = true;
-            if ((std::rand() % 100) < cubePct)
-                spawnBall(W, H, true);
+        
+        if(!hasSpawnedPlayer && totalSpawned >= maxItems/2) {
+            hasSpawnedPlayer = true;
+            if((std::rand()%100) < cubeChance)
+                dropItem(true);
         }
-
-        if (!noFloor && !filled && spawned >= numBalls) {
-            if (tick >= numBalls * dropEvery + (int)(drainWait * 60.f)) {
-                filled   = true;
-                draining = true;
-                if (ground) { world->DestroyBody(ground); ground = nullptr; }
+        
+        if(!noGround && !isFilledUp && totalSpawned >= maxItems) {
+            float totalSpawnTime = (float)maxItems * spawnDelay;
+            if(elapsedTime >= totalSpawnTime + waitTime) {
+                isFilledUp = true;
+                isDraining = true;
+                if(floorBody) {
+                    physWorld->DestroyBody(floorBody);
+                    floorBody = nullptr;
+                }
             }
         }
-
-        if (!noFloor && draining) {
-            bool allGone = true;
-            for (auto& b : balls)
-                if (b.body->GetPosition().y * PPM < H + 300.f) { allGone = false; break; }
-            if (allGone) { startCycle(); return; }
+        
+        if(!noGround && isDraining) {
+            bool allOff = true;
+            for(auto& item : items) {
+                if(item.phys->GetPosition().y*40.f < H+300.f) {
+                    allOff = false;
+                    break;
+                }
+            }
+            if(allOff) {
+                reset();
+                return;
+            }
         }
-
-        if (noFloor && tick > numBalls * dropEvery + 500) { startCycle(); return; }
-
-        static constexpr float STEP = 1.f/60.f;
-        accumulator += dt;
-        while (accumulator >= STEP) { world->Step(STEP, 8, 3); accumulator -= STEP; }
-
-        for (auto& b : balls) {
-            if (!b.node) continue;
-            auto p = b.body->GetPosition();
-            b.node->setPosition({p.x * PPM, H - p.y * PPM});
-            b.node->setRotation(b.body->GetAngle() * (180.f / (float)M_PI));
+        
+        if(noGround && elapsedTime > (float)maxItems * spawnDelay + 8.f) {
+            reset();
+            return;
+        }
+        
+        float STEP = 1.f/60.f;
+        dt_accum += dt;
+        while(dt_accum >= STEP) {
+            physWorld->Step(STEP, 8, 3);
+            dt_accum -= STEP;
+        }
+        
+        for(auto& item : items) {
+            if(!item.vis) continue;
+            auto pos = item.phys->GetPosition();
+            item.vis->setPosition(pos.x*40.f, H - pos.y*40.f);
+            item.vis->setRotation(item.phys->GetAngle() * 180.f/M_PI);
         }
     }
-
+    
 public:
-    static ScreensaverLayer* create() {
-        auto* r = new ScreensaverLayer();
-        if (r && r->init()) { r->autorelease(); r->setTag(2047); return r; }
-        CC_SAFE_DELETE(r);
+    static ScreensaverStuff* create() {
+        auto ret = new ScreensaverStuff();
+        if(ret && ret->init()) {
+            ret->autorelease();
+            ret->setTag(2047);
+            return ret;
+        }
+        CC_SAFE_DELETE(ret);
         return nullptr;
     }
-
-    void dismiss() {
-        if (dead) return;
-        dead = true;
+    
+    void kill() {
+        if(killed) return;
+        killed = true;
         this->stopAllActions();
         this->unscheduleAllSelectors();
         this->removeFromParentAndCleanup(true);
-        g_active = false;
-        g_idle   = 0.f;
+        ssActive = false;
+        idleTimer = 0.f;
     }
-
-    bool ccTouchBegan(CCTouch*, CCEvent*) override { dismiss(); return true; }
-    void keyDown(enumKeyCodes, double) override    { dismiss(); }
-    void keyBackClicked() override                 { dismiss(); }
-#ifdef GEODE_IS_DESKTOP
-    void scrollWheel(float, float) override { dismiss(); }
-#endif
-
-    ~ScreensaverLayer() override {
-        if (bgMode == BgMode::Blur) BlurAPI::removeBlur(this);
-        delete world; world = nullptr;
-    }
-};
-
-// scene hook - runs the idle counter
-class $modify(MyScene, CCScene) {
-    bool init() {
-        if (!CCScene::init()) return false;
-        this->schedule(schedule_selector(MyScene::tick), 0.f);
+    
+    bool ccTouchBegan(CCTouch*, CCEvent*) override {
+        kill();
         return true;
     }
-
-    void tick(float dt) {
-        if (g_active || g_inLevel) { g_idle = 0.f; return; }
-        g_idle += dt;
-
-        float limit = (float)Mod::get()->getSettingValue<int64_t>("idle-timeout");
-        if (g_idle < limit) return;
-
-        g_idle   = 0.f;
-        g_active = true;
-        auto* ss = ScreensaverLayer::create();
-        if (ss) { ss->setZOrder(9999); this->addChild(ss); }
-        else g_active = false;
+    
+    void keyDown(enumKeyCodes, double) override {
+        kill();
+    }
+    
+    void keyBackClicked() override {
+        kill();
+    }
+    
+#ifdef GEODE_IS_DESKTOP
+    void scrollWheel(float, float) override {
+        kill();
+    }
+#endif
+    
+    ~ScreensaverStuff() override {
+        if(bgType == "blur")
+            BlurAPI::removeBlur(this);
+        delete physWorld;
     }
 };
 
-class $modify(MyTouchDispatcher, CCTouchDispatcher) {
+const int ScreensaverStuff::orbIds[11] = {36, 84, 141, 1022, 1330, 1333, 1704, 1751, 3004, 3027, 1594};
+const float ScreensaverStuff::orbSizes[11] = {32.3f, 33.2f, 33.6f, 31.96f, 36.5f, 34.9f, 41.f, 41.f, 41.f, 39.4f, 30.8f};
+
+class $modify(CCScene) {
+    bool init() {
+        if(!CCScene::init()) return false;
+        this->schedule(schedule_selector($modify(CCScene)::checkIdle), 0.f);
+        return true;
+    }
+    
+    void checkIdle(float dt) {
+        // don't run during editor or active gameplay
+        auto scene = CCDirector::get()->getRunningScene();
+        if(!scene) return;
+        
+        bool inEditor = scene->getChildByType<LevelEditorLayer>(0) != nullptr;
+        bool inPlay = scene->getChildByType<PlayLayer>(0) != nullptr;
+        
+        // reset timer if in editor, or if in active gameplay (not paused)
+        if(inEditor || (inPlay && !pauseOpen) || ssActive) {
+            idleTimer = 0.f;
+            return;
+        }
+        
+        idleTimer += dt;
+        float timeout = (float)Mod::get()->getSettingValue<int64_t>("idle-timeout");
+        
+        if(idleTimer < timeout) return;
+        
+        idleTimer = 0.f;
+        ssActive = true;
+        
+        auto ss = ScreensaverStuff::create();
+        if(ss) {
+            ss->setZOrder(9999);
+            this->addChild(ss);
+        } else {
+            ssActive = false;
+        }
+    }
+};
+
+class $modify(CCTouchDispatcher) {
     void touches(CCSet* t, CCEvent* e, unsigned int type) {
         CCTouchDispatcher::touches(t, e, type);
-        if (type == CCTOUCHBEGAN) g_idle = 0.f;
+        if(type == CCTOUCHBEGAN)
+            idleTimer = 0.f;
     }
 };
 
-// keyboard is annoying because it also needs to kill the screensaver, not just reset
-class $modify(MyKbDispatcher, CCKeyboardDispatcher) {
+class $modify(CCKeyboardDispatcher) {
     bool dispatchKeyboardMSG(enumKeyCodes key, bool down, bool repeat, double ts) {
-        bool r = CCKeyboardDispatcher::dispatchKeyboardMSG(key, down, repeat, ts);
-        if (down && !repeat) {
-            g_idle = 0.f;
-            auto* scene = CCDirector::get()->getRunningScene();
-            if (scene) {
-                if (auto* ss = scene->getChildByTag(2047))
-                    static_cast<ScreensaverLayer*>(ss)->dismiss();
+        bool result = CCKeyboardDispatcher::dispatchKeyboardMSG(key, down, repeat, ts);
+        
+        if(down && !repeat) {
+            idleTimer = 0.f;
+            auto scene = CCDirector::get()->getRunningScene();
+            if(scene) {
+                auto ss = scene->getChildByTag(2047);
+                if(ss)
+                    static_cast<ScreensaverStuff*>(ss)->kill();
             }
         }
-        return r;
+        
+        return result;
     }
 };
 
-class $modify(MyPlayLayer, PlayLayer) {
-    bool init(GJGameLevel* lvl, bool replay, bool noObjs) {
-        g_inLevel = true;
-        g_idle    = 0.f;
-        auto* scene = CCDirector::get()->getRunningScene();
-        if (scene) {
-            if (auto* ss = scene->getChildByTag(2047))
-                static_cast<ScreensaverLayer*>(ss)->dismiss();
-        }
-        return PlayLayer::init(lvl, replay, noObjs);
+class $modify(PauseLayer) {
+    void customSetup() {
+        PauseLayer::customSetup();
+        pauseOpen = true;
+        idleTimer = 0.f;
     }
+    
+    void onQuit(CCObject* sender) {
+        pauseOpen = false;
+        idleTimer = 0.f;
+        PauseLayer::onQuit(sender);
+    }
+    
+    void onResume(CCObject* sender) {
+        pauseOpen = false;
+        idleTimer = 0.f;
+        
+        auto scene = CCDirector::get()->getRunningScene();
+        if(scene) {
+            auto ss = scene->getChildByTag(2047);
+            if(ss)
+                static_cast<ScreensaverStuff*>(ss)->kill();
+        }
+        
+        PauseLayer::onResume(sender);
+    }
+};
 
-    void onQuit() {
-        g_inLevel = false;
-        g_idle    = 0.f;
-        PlayLayer::onQuit();
+class $modify(LevelEditorLayer) {
+    bool init(GJGameLevel* lvl, bool unk) {
+        idleTimer = 0.f;
+        return LevelEditorLayer::init(lvl, unk);
     }
 };
