@@ -6,7 +6,7 @@
         "android": "2.2081",
         "ios": "2.2081"
     },
-    "version": "v1.1.2",
+    "version": "v1.2.0",
     "id": "malikhw47.orbit-screensaver",
     "name": "ORBIT Screensaver",
     "developer": "MalikHw47",
@@ -26,9 +26,9 @@
             "type": "title",
             "name": "Physics"
         },
-        "idle-timeout": {
-            "name": "Idle Timeout (seconds)",
-            "description": "delay in seconds of no input before the screen saver appears",
+        "wait-time": {
+            "name": "Idle Time (seconds)",
+            "description": "how long till screensaver starts",
             "type": "int",
             "default": 30,
             "min": 5,
@@ -39,9 +39,9 @@
                 "arrow-step": 5
             }
         },
-        "orb-speed": {
+        "physics-speed": {
             "name": "Speed",
-            "description": "Gravity speed multiplier",
+            "description": "gravity multiplier",
             "type": "int",
             "default": 10,
             "min": 1,
@@ -55,9 +55,9 @@
             "type": "title",
             "name": "orbs"
         },
-        "orb-count": {
+        "item-count": {
             "name": "Orb Count",
-            "description": "Total number of orbs to show each cycle.",
+            "description": "how many orbs spawn per cycle",
             "type": "int",
             "default": 120,
             "min": 1,
@@ -72,9 +72,9 @@
             "type": "title",
             "name": "Player Cube"
         },
-        "cube-chance": {
-            "name": "Cube Spawn Chance (%)",
-            "description": "Probability (0-100) that your cube will also appear in the ball pit",
+        "player-chance": {
+            "name": "Cube Chance (%)",
+            "description": "chance your cube shows up too",
             "type": "int",
             "default": 50,
             "min": 0,
@@ -88,36 +88,36 @@
             "type": "title",
             "name": "Background"
         },
-        "bg-type": {
+        "background-mode": {
             "name": "Background Type",
-            "description": "background type (blur requires BlurAPI)",
+            "description": "what kind of background (blur needs BlurAPI)",
             "type": "string",
             "default": "color",
             "one-of": ["color", "image", "blur"]
         },
-        "bg-color": {
+        "overlay-color": {
             "name": "Background Color",
-            "description": "Color used for the background overlay (RGB, no alpha here)",
+            "description": "rgb color for the overlay",
             "type": "rgb",
             "default": [0, 0, 0]
         },
-        "bg-opacity": {
+        "overlay-opacity": {
             "name": "Background Opacity",
-            "description": "Opacity of the background (0 = fully transparent, 255 = fully opaque)",
+            "description": "transparency level (0 = see through, 255 = solid)",
             "type": "int",
             "default": 200,
             "min": 0,
             "max": 255
         },
-        "bg-image": {
+        "image-path": {
             "name": "Background Image",
-            "description": "path to an image file. Only used when Background Type is set to image",
+            "description": "file path for custom image (only works if type is set to image)",
             "type": "file",
             "default": ""
         },
-        "bg-fit": {
+        "image-fit": {
             "name": "Image Fit",
-            "description": "How the image fills the screen. stretch = fills. zoom = maintains aspect ratio, crops edges",
+            "description": "stretch = fill screen, zoom = keep ratio and crop",
             "type": "string",
             "default": "stretch",
             "one-of": ["stretch", "zoom"]
@@ -126,9 +126,9 @@
             "type": "title",
             "name": "Misc"
         },
-        "no-ground": {
+        "infinite-fall": {
             "name": "No Ground (Infinite Fall)",
-            "description": "Orbs fall off the bottom of the screen instead of filling up (rip Hdanke)",
+            "description": "orbs just fall forever instead of piling up",
             "type": "bool",
             "default": false
         }
