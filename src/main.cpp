@@ -274,9 +274,7 @@ class ScreensaverStuff : public CCLayerColor {
         this->setTouchPriority(-9999);
         this->setKeypadEnabled(true);
         this->setKeyboardEnabled(true);
-#ifdef GEODE_IS_DESKTOP
         this->setMouseEnabled(true);
-#endif
         
         this->scheduleUpdate();
         std::srand((unsigned)std::time(nullptr));
@@ -408,12 +406,10 @@ public:
     void keyBackClicked() override {
         kill();
     }
-    
-#ifdef GEODE_IS_DESKTOP
+    q
     void scrollWheel(float, float) override {
         kill();
     }
-#endif
     
     ~ScreensaverStuff() override {
         if(bgType == "blur")
