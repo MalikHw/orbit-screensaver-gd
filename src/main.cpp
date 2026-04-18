@@ -186,7 +186,7 @@ class ScreensaverStuff : public CCLayerColor {
                 if(gm->getPlayerGlow())
                     sp->setGlowOutline(gm->colorForIdx(gm->getPlayerGlowColor()));
                 sp->setScale(1.f);
-                sp->setPosition(-9999, -9999);
+                sp->setPosition(ccp(-9999, -9999));
                 this->addChild(sp, 3);
                 visNode = sp;
             }
@@ -194,7 +194,7 @@ class ScreensaverStuff : public CCLayerColor {
             auto obj = GameObject::createWithKey(orbIds[orbType]);
             if(obj) {
                 obj->setScale(1.f);
-                obj->setPosition(-9999, -9999);
+                obj->setPosition(ccp(-9999, -9999));
                 this->addChild(obj, 2);
                 visNode = obj;
             }
@@ -421,7 +421,7 @@ public:
 const int ScreensaverStuff::orbIds[11] = {36, 84, 141, 1022, 1330, 1333, 1704, 1751, 3004, 3027, 1594};
 const float ScreensaverStuff::orbSizes[11] = {32.3f, 33.2f, 33.6f, 31.96f, 36.5f, 34.9f, 41.f, 41.f, 41.f, 39.4f, 30.8f};
 
-class $modify(MySceneHook, CCScene) {
+class $modify(OrbitScrsvrScene, CCScene) {
     bool init() {
         if(!CCScene::init()) return false;
         this->schedule(schedule_selector(OrbitScrsvrScene::checkIdle), 0.f);
