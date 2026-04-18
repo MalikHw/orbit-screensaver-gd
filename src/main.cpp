@@ -84,7 +84,7 @@ class ScreensaverStuff : public CCLayerColor {
         
         if(bgType != "image") return;
         
-        auto imgPath = Mod::get()->getSettingValue<std::filesystem::path>("bg-image");
+        auto imgPath = Mod::get()->getSettingValue<std::filesystem::path>("image-path");
         if(imgPath.empty() || !std::filesystem::exists(imgPath)) return;
         
         auto tex = CCTextureCache::get()->addImage(imgPath.string().c_str(), false);
@@ -204,10 +204,10 @@ class ScreensaverStuff : public CCLayerColor {
     }
     
     void reset() {
-        maxItems = (int)Mod::get()->getSettingValue<int64_t>("orb-count");
-        cubeChance = (int)Mod::get()->getSettingValue<int64_t>("cube-chance");
-        noGround = Mod::get()->getSettingValue<bool>("no-ground");
-        simSpeed = (float)Mod::get()->getSettingValue<int64_t>("orb-speed") / 10.f;
+        maxItems = (int)Mod::get()->getSettingValue<int64_t>("item-count");
+        cubeChance = (int)Mod::get()->getSettingValue<int64_t>("player-chance");
+        noGround = Mod::get()->getSettingValue<bool>("infinite-fall");
+        simSpeed = (float)Mod::get()->getSettingValue<int64_t>("physics-speed") / 10.f;
         spawnInterval = std::max(1, (int)(20.f/simSpeed));
         if(maxItems < 1) maxItems = 1;
         
@@ -242,7 +242,7 @@ class ScreensaverStuff : public CCLayerColor {
     }
     
     bool init() override {
-        bgType = Mod::get()->getSettingValue<std::string>("bg-type");
+        bgType = Mod::get()->getSettingValue<std::string>("background-mode");
         
         if(bgType == "blur" && BlurAPI::isBlurAPIEnabled()) {
             // blur mode
@@ -252,9 +252,9 @@ class ScreensaverStuff : public CCLayerColor {
             bgType = "color";
         }
         
-        bgCol = Mod::get()->getSettingValue<ccColor3B>("bg-color");
-        bgAlpha = (int)Mod::get()->getSettingValue<int64_t>("bg-opacity");
-        bgFitMode = Mod::get()->getSettingValue<std::string>("bg-fit");
+        bgCol = Mod::get()->getSettingValue<ccColor3B>("overlay-color");
+        bgAlpha = (int)Mod::get()->getSettingValue<int64_t>("overlay-opacity");
+        bgFitMode = Mod::get()->getSettingValue<std::string>("image-fit");
         
         GLubyte initAlpha = (bgType == "color") ? 0 : 0;
         if(!CCLayerColor::initWithColor({bgCol.r, bgCol.g, bgCol.b, initAlpha}))
@@ -447,7 +447,7 @@ class $modify(CCScene) {
         }
         
         idleTimer += dt;
-        float timeout = (float)Mod::get()->getSettingValue<int64_t>("idle-timeout");
+        float timeout = (float)Mod::get()->getSettingValue<int64_t>("wait-time");
         
         if(idleTimer < timeout) return;
         
