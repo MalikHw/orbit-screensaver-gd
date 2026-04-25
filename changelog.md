@@ -1,7 +1,11 @@
+## v1.2.1
+- istg if someone says this is NOW ai-generated... :sob: so again a rewrite ig
+---
+
 ### v1.2.0
 - FULL REWRITE with help from a friend (he doesnt want to get credited lmao)
 - doesnt now appear in editor
-
+---
 
 ### v1.1.2
 - the SMALLEST bugfix lol
