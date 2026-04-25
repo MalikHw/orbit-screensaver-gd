@@ -6,7 +6,7 @@
         "android": "2.2081",
         "ios": "2.2081"
     },
-    "version": "v1.2.0",
+    "version": "v1.2.1",
     "id": "malikhw47.orbit-screensaver",
     "name": "ORBIT Screensaver",
     "developer": "MalikHw47",
@@ -19,7 +19,7 @@
     },
     "issues": {
         "url": "https://github.com/MalikHw/orbit-screensaver-gd/issues",
-        "info": "just say in <cl>the github issues</c>, feature requests allowed</c>"
+        "info": "just say in <cl>the github issues</c>, feature requests allowed"
     },
     "settings": {
         "physics-title": {
