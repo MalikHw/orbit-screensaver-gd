@@ -83,7 +83,7 @@ class ScreensaverLayer : public CCLayerColor {
         if(bgType != "image") return;
         auto imgPath = Mod::get()->getSettingValue<std::filesystem::path>("image-path");
         if(imgPath.empty() || !std::filesystem::exists(imgPath)) return;
-        auto tex = CCTextureCache::get()->addImage(imgPath.string().c_str());
+        auto tex = CCTextureCache::get()->addImage(imgPath.string().c_str(), false);
         if(!tex) return;
         bgSprite = CCSprite::createWithTexture(tex);
         if(!bgSprite) return;
@@ -172,7 +172,7 @@ class ScreensaverLayer : public CCLayerColor {
                 if(gm->getPlayerGlow())
                     sp->setGlowOutline(gm->colorForIdx(gm->getPlayerGlowColor()));
                 sp->setScale(1.0f);
-                sp->setPosition(-9999, -9999);
+                sp->setPosition({-9999.f, -9999.f});
                 this->addChild(sp, 3);
                 visual = sp;
             }
@@ -180,7 +180,7 @@ class ScreensaverLayer : public CCLayerColor {
             auto obj = GameObject::createWithKey(orbIds[orbIdx]);
             if(obj) {
                 obj->setScale(1.0f);
-                obj->setPosition(-9999, -9999);
+                obj->setPosition({-9999.f, -9999.f});
                 this->addChild(obj, 2);
                 visual = obj;
             }
